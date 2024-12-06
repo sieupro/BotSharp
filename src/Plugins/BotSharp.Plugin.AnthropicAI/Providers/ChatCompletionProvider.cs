@@ -161,7 +161,7 @@ public class ChatCompletionProvider : IChatCompletion
                         new ToolResultContent()
                         {
                             ToolUseId = conv.ToolCallId,
-                            Content = conv.Content
+                            //Content = conv.Content,
                         }
                     }
                 });
