@@ -1,5 +1,4 @@
 using BotSharp.Abstraction.Users.Models;
-using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 
 namespace BotSharp.Abstraction.Users;
@@ -50,7 +49,7 @@ public interface IAuthenticationHook
     /// </summary>
     /// <param name="user"></param>
     /// <returns></returns>
-    Task VerificationCodeResetPassword(User user);
+    Task SendVerificationCode(User user);
 
     /// <summary>
     /// Delete users

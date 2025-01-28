@@ -20,10 +20,10 @@ public class User
     public string Type { get; set; } = UserType.Client;
     public string Role { get; set; } = UserRole.User;
     public string? VerificationCode { get; set; }
+    public DateTime? VerificationCodeExpireAt { get; set; }
     public bool Verified { get; set; }
     public string RegionCode { get; set; } = "CN";
     public string? AffiliateId { get; set; }
-    public string? ReferralCode { get; set; }
     public string? EmployeeId { get; set; }
     public bool IsDisabled { get; set; }
     public IEnumerable<string> Permissions { get; set; } = [];

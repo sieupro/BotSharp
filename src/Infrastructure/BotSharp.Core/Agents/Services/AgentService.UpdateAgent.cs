@@ -39,6 +39,8 @@ public partial class AgentService
         record.Responses = agent.Responses ?? [];
         record.Samples = agent.Samples ?? [];
         record.Utilities = agent.Utilities ?? [];
+        record.KnowledgeBases = agent.KnowledgeBases ?? [];
+        record.Rules = agent.Rules ?? [];
         if (agent.LlmConfig != null && !agent.LlmConfig.IsInherit)
         {
             record.LlmConfig = agent.LlmConfig;
@@ -102,6 +104,8 @@ public partial class AgentService
                        .SetResponses(foundAgent.Responses)
                        .SetSamples(foundAgent.Samples)
                        .SetUtilities(foundAgent.Utilities)
+                       .SetKnowledgeBases(foundAgent.KnowledgeBases)
+                       .SetRules(foundAgent.Rules)
                        .SetLlmConfig(foundAgent.LlmConfig);
 
             _db.UpdateAgent(clonedAgent, AgentField.All);

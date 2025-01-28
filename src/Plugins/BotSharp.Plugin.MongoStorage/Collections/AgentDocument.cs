@@ -18,8 +18,10 @@ public class AgentDocument : MongoBase
     public List<AgentResponseMongoElement> Responses { get; set; }
     public List<string> Samples { get; set; }
     public List<AgentUtilityMongoElement> Utilities { get; set; }
+    public List<AgentKnowledgeBaseMongoElement> KnowledgeBases { get; set; }
     public List<string> Profiles { get; set; }
     public List<RoutingRuleMongoElement> RoutingRules { get; set; }
+    public List<AgentRuleMongoElement> Rules { get; set; }
     public AgentLlmConfigMongoElement? LlmConfig { get; set; }
 
     public DateTime CreatedTime { get; set; }

@@ -14,6 +14,7 @@ using BotSharp.Core.Infrastructures.Events;
 using BotSharp.Core.Roles.Services;
 using BotSharp.Abstraction.Templating;
 using BotSharp.Core.Templating;
+using BotSharp.Abstraction.Infrastructures.Enums;
 
 namespace BotSharp.Core;
 
@@ -34,20 +35,28 @@ public static class BotSharpCoreExtensions
         services.AddScoped<IUserService, UserService>();
         services.AddScoped<ProcessorFactory>();
 
-        // Register cache service
-        var cacheSettings = new SharpCacheSettings();
-        config.Bind("SharpCache", cacheSettings);
-        services.AddSingleton(x => cacheSettings);
-        services.AddSingleton<ICacheService, RedisCacheService>();
-
         AddRedisEvents(services, config);
-
-        services.AddMemoryCache();
+        // Register cache service
+        AddCacheServices(services, config);
 
         RegisterPlugins(services, config);
         AddBotSharpOptions(services, configOptions);
 
         return services;
+    }
+
+    private static void AddCacheServices(IServiceCollection services, IConfiguration config)
+    {
+        services.AddMemoryCache();
+        var cacheSettings = new SharpCacheSettings();
+        config.Bind("SharpCache", cacheSettings);
+        services.AddSingleton(x => cacheSettings);
+
+        services.AddSingleton<ICacheService>(sp => cacheSettings.CacheType switch
+        {
+            CacheType.RedisCache => ActivatorUtilities.CreateInstance<RedisCacheService>(sp),
+            _ => ActivatorUtilities.CreateInstance<MemoryCacheService>(sp),
+        });
     }
 
     public static IServiceCollection UsingSqlServer(this IServiceCollection services, IConfiguration config)
@@ -104,6 +113,11 @@ public static class BotSharpCoreExtensions
         // Add Redis connection as a singleton
         var dbSettings = new BotSharpDatabaseSettings();
         config.Bind("Database", dbSettings);
+
+        if (string.IsNullOrEmpty(dbSettings.Redis))
+        {
+            return;
+        }
 
         services.AddSingleton<IConnectionMultiplexer>(ConnectionMultiplexer.Connect(dbSettings.Redis));
         services.AddSingleton<IEventPublisher, RedisPublisher>();

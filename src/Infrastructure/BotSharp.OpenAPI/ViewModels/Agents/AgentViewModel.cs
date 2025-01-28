@@ -25,6 +25,12 @@ public class AgentViewModel
     public bool MergeUtility { get; set; }
     public List<AgentUtility> Utilities { get; set; }
 
+    [JsonPropertyName("knowledge_bases")]
+    public List<AgentKnowledgeBase> KnowledgeBases { get; set; }
+
+    [JsonPropertyName("rules")]
+    public List<AgentRule> Rules { get; set; }
+
     [JsonPropertyName("is_public")]
     public bool IsPublic { get; set; }
 
@@ -69,19 +75,21 @@ public class AgentViewModel
             Description = agent.Description,
             Type = agent.Type,
             Instruction = agent.Instruction,
-            ChannelInstructions = agent.ChannelInstructions,
-            Templates = agent.Templates,
-            Functions = agent.Functions,
-            Responses = agent.Responses,
-            Samples = agent.Samples,
-            Utilities = agent.Utilities,
+            ChannelInstructions = agent.ChannelInstructions ?? [],
+            Templates = agent.Templates ?? [],
+            Functions = agent.Functions ?? [],
+            Responses = agent.Responses ?? [],
+            Samples = agent.Samples ?? [],
+            Utilities = agent.Utilities ?? [],
+            KnowledgeBases = agent.KnowledgeBases ?? [],
             IsPublic= agent.IsPublic,
             Disabled = agent.Disabled,
             MergeUtility = agent.MergeUtility,
             IconUrl = agent.IconUrl,
             MaxMessageCount = agent.MaxMessageCount,
-            Profiles = agent.Profiles ?? new List<string>(),
-            RoutingRules = agent.RoutingRules,
+            Profiles = agent.Profiles ?? [],
+            RoutingRules = agent.RoutingRules ?? [],
+            Rules = agent.Rules ?? [],
             LlmConfig = agent.LlmConfig,
             Plugin = agent.Plugin,
             CreatedDateTime = agent.CreatedDateTime,

@@ -10,7 +10,10 @@ public class AgentController : ControllerBase
     private readonly IUserIdentity _user;
     private readonly IServiceProvider _services;
 
-    public AgentController(IAgentService agentService, IUserIdentity user, IServiceProvider services)
+    public AgentController(
+        IAgentService agentService,
+        IUserIdentity user,
+        IServiceProvider services)
     {
         _agentService = agentService;
         _user = user;
@@ -149,6 +152,12 @@ public class AgentController : ControllerBase
     [HttpGet("/agent/utility/options")]
     public IEnumerable<AgentUtility> GetAgentUtilityOptions()
     {
-        return _agentService.GetAgentUtilityOptions();
+        var utilities = new List<AgentUtility>();
+        var hooks = _services.GetServices<IAgentUtilityHook>();
+        foreach (var hook in hooks)
+        {
+            hook.AddUtilities(utilities);
+        }
+        return utilities.Where(x => !string.IsNullOrWhiteSpace(x.Name)).OrderBy(x => x.Name).ToList();
     }
 }

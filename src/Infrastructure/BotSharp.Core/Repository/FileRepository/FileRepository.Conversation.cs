@@ -134,6 +134,22 @@ namespace BotSharp.Core.Repository
                 }
             }
         }
+        public void UpdateConversationTitleAlias(string conversationId, string titleAlias)
+        {
+            var convDir = FindConversationDirectory(conversationId);
+            if (!string.IsNullOrEmpty(convDir))
+            {
+                var convFile = Path.Combine(convDir, CONVERSATION_FILE);
+                var content = File.ReadAllText(convFile);
+                var record = JsonSerializer.Deserialize<Conversation>(content, _options);
+                if (record != null)
+                {
+                    record.TitleAlias = titleAlias;
+                    record.UpdatedTime = DateTime.UtcNow;
+                    File.WriteAllText(convFile, JsonSerializer.Serialize(record, _options));
+                }
+            }
+        }
 
         public bool UpdateConversationTags(string conversationId, List<string> tags)
         {
@@ -148,6 +164,27 @@ namespace BotSharp.Core.Repository
             var json = File.ReadAllText(convFile);
             var conv = JsonSerializer.Deserialize<Conversation>(json, _options);
             conv.Tags = tags ?? new();
+            conv.UpdatedTime = DateTime.UtcNow;
+            File.WriteAllText(convFile, JsonSerializer.Serialize(conv, _options));
+            return true;
+        }
+
+        public bool AppendConversationTags(string conversationId, List<string> tags)
+        {
+            if (string.IsNullOrEmpty(conversationId) || tags.IsNullOrEmpty()) return false;
+
+            var convDir = FindConversationDirectory(conversationId);
+            if (string.IsNullOrEmpty(convDir)) return false;
+
+            var convFile = Path.Combine(convDir, CONVERSATION_FILE);
+            if (!File.Exists(convFile)) return false;
+
+            var json = File.ReadAllText(convFile);
+            var conv = JsonSerializer.Deserialize<Conversation>(json, _options);
+
+            var curTags = conv.Tags ?? new();
+            var newTags = curTags.Concat(tags).Distinct(StringComparer.InvariantCultureIgnoreCase).ToList();
+            conv.Tags = newTags;
             conv.UpdatedTime = DateTime.UtcNow;
             File.WriteAllText(convFile, JsonSerializer.Serialize(conv, _options));
             return true;
@@ -356,6 +393,10 @@ namespace BotSharp.Core.Repository
                 {
                     matched = matched && record.Title.Contains(filter.Title);
                 }
+                if (filter?.TitleAlias != null)
+                {
+                    matched = matched && record.TitleAlias.Contains(filter.TitleAlias);
+                }
                 if (filter?.AgentId != null)
                 {
                     matched = matched && record.AgentId == filter.AgentId;
@@ -487,12 +528,13 @@ namespace BotSharp.Core.Repository
                     continue;
                 }
 
-                if (excludeAgentIds.Contains(conv.AgentId) || conv.UpdatedTime > utcNow.AddHours(-bufferHours))
+                if (conv.UpdatedTime > utcNow.AddHours(-bufferHours))
                 {
                     continue;
                 }
 
-                if (conv.DialogCount <= messageLimit)
+                if ((excludeAgentIds.Contains(conv.AgentId) && conv.DialogCount == 0)
+                    || (!excludeAgentIds.Contains(conv.AgentId) && conv.DialogCount <= messageLimit))
                 {
                     ids.Add(conv.Id);
                     if (ids.Count >= batchSize)

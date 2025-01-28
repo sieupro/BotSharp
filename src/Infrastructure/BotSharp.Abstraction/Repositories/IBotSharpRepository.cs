@@ -3,6 +3,7 @@ using BotSharp.Abstraction.Plugins.Models;
 using BotSharp.Abstraction.Repositories.Filters;
 using BotSharp.Abstraction.Roles.Models;
 using BotSharp.Abstraction.Shared;
+using BotSharp.Abstraction.Statistics.Models;
 using BotSharp.Abstraction.Tasks.Models;
 using BotSharp.Abstraction.Translation.Models;
 using BotSharp.Abstraction.Users.Enums;
@@ -33,6 +34,7 @@ public interface IBotSharpRepository : IHaveServiceProvider
     List<User> GetUserByIds(List<string> ids) => throw new NotImplementedException();
     List<User> GetUsersByAffiliateId(string affiliateId) => throw new NotImplementedException();
     User? GetUserByUserName(string userName) => throw new NotImplementedException();
+    void UpdateUserName(string userId, string userName) => throw new NotImplementedException();
     Dashboard? GetDashboard(string id = null) => throw new NotImplementedException();
     void CreateUser(User user) => throw new NotImplementedException();
     void UpdateExistUser(string userId, User user) => throw new NotImplementedException();
@@ -49,6 +51,7 @@ public interface IBotSharpRepository : IHaveServiceProvider
     PagedItems<User> GetUsers(UserFilter filter) => throw new NotImplementedException();
     User? GetUserDetails(string userId, bool includeAgent = false) => throw new NotImplementedException();
     bool UpdateUser(User user, bool updateUserAgents = false) => throw new NotImplementedException();
+
     #endregion
 
     #region Agent
@@ -86,7 +89,9 @@ public interface IBotSharpRepository : IHaveServiceProvider
     Conversation GetConversation(string conversationId);
     PagedItems<Conversation> GetConversations(ConversationFilter filter);
     void UpdateConversationTitle(string conversationId, string title);
+    void UpdateConversationTitleAlias(string conversationId, string titleAlias);
     bool UpdateConversationTags(string conversationId, List<string> tags);
+    bool AppendConversationTags(string conversationId, List<string> tags);
     bool UpdateConversationMessage(string conversationId, UpdateMessageRequest request);
     void UpdateConversationBreakpoint(string conversationId, ConversationBreakpoint breakpoint);
     ConversationBreakpoint? GetConversationBreakpoint(string conversationId);
@@ -115,7 +120,9 @@ public interface IBotSharpRepository : IHaveServiceProvider
     #endregion
 
     #region Statistics
-    void IncrementConversationCount();
+    BotSharpStats? GetGlobalStats(string category, string group, DateTime recordTime) => throw new NotImplementedException();
+    bool SaveGlobalStats(BotSharpStats body) => throw new NotImplementedException();
+
     #endregion
 
     #region Translation

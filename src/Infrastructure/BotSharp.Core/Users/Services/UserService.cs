@@ -53,21 +53,21 @@ public class UserService : IUserService
             record = db.GetUserByUserName(user.UserName);
         }
 
-        if (record != null && record.Verified)
+        if (record == null && !string.IsNullOrWhiteSpace(user.Phone))
         {
-            // account is already activated
-            _logger.LogWarning($"User account already exists: {record.Id} {record.UserName}");
-            return record;
-        }
-
-        if (!string.IsNullOrWhiteSpace(user.Phone))
-        {
-            record = db.GetUserByPhone(user.Phone);
+            record = db.GetUserByPhone(user.Phone, regionCode: (string.IsNullOrWhiteSpace(user.RegionCode) ? "CN" : user.RegionCode));
         }
 
         if (record == null && !string.IsNullOrWhiteSpace(user.Email))
         {
             record = db.GetUserByEmail(user.Email);
+        }
+
+        if (record != null && record.Verified)
+        {
+            // account is already activated
+            _logger.LogWarning($"User account already exists: {record.Id} {record.UserName}");
+            return record;
         }
 
         if (record != null)
@@ -94,8 +94,13 @@ public class UserService : IUserService
             //record.Phone = "+" + Regex.Match(user.Phone, @"\d+").Value;
             record.Phone = Regex.Match(user.Phone, @"\d+").Value;
         }
+
         record.Salt = Guid.NewGuid().ToString("N");
-        record.Password = Utilities.HashTextMd5($"{user.Password}{record.Salt}");
+
+        if (!string.IsNullOrWhiteSpace(user.Password))
+        {
+            record.Password = Utilities.HashTextMd5($"{user.Password}{record.Salt}");
+        }
 
         if (_setting.NewUserVerification)
         {
@@ -112,7 +117,7 @@ public class UserService : IUserService
             db.UpdateExistUser(hasRegisterId, record);
         }
 
-        _logger.LogWarning($"Created new user account: {record.Id} {record.UserName}");
+        _logger.LogWarning($"Created new user account: {record.Id} {record.UserName}, RegionCode: {record.RegionCode}");
         Utilities.ClearCache();
 
         var hooks = _services.GetServices<IAuthenticationHook>();
@@ -127,7 +132,8 @@ public class UserService : IUserService
     public async Task<bool> UpdatePassword(string password, string verificationCode)
     {
         var db = _services.GetRequiredService<IBotSharpRepository>();
-        var record = db.GetUserByUserName(_user.UserName);
+
+        var record = db.GetUserById(_user.Id);
 
         if (record == null)
         {
@@ -371,7 +377,7 @@ public class UserService : IUserService
         return await _cacheService.GetAsync<DateTime>(GetUserTokenExpiresCacheKey(_user.Id));
     }
 
-    [MemoryCache(10 * 60, perInstanceCache: true)]
+    [SharpCache(10, perInstanceCache: true)]
     public async Task<User> GetMyProfile()
     {
         var db = _services.GetRequiredService<IBotSharpRepository>();
@@ -392,7 +398,7 @@ public class UserService : IUserService
         return user;
     }
 
-    [MemoryCache(10 * 60, perInstanceCache: true)]
+    [SharpCache(10, perInstanceCache: true)]
     public async Task<User> GetUser(string id)
     {
         var db = _services.GetRequiredService<IBotSharpRepository>();
@@ -473,7 +479,7 @@ public class UserService : IUserService
         var record = id.Contains("@") ? db.GetUserByEmail(id) : db.GetUserByUserName(id);
         if (record == null)
         {
-            record = db.GetUserByPhone(id);
+            record = db.GetUserByPhone(id, regionCode: (string.IsNullOrWhiteSpace(model.RegionCode) ? "CN" : model.RegionCode));
         }
 
         if (record == null)
@@ -481,7 +487,7 @@ public class UserService : IUserService
             return default;
         }
 
-        if (record.VerificationCode != model.VerificationCode)
+        if (record.VerificationCode != model.VerificationCode || (record.VerificationCodeExpireAt != null && DateTime.UtcNow > record.VerificationCodeExpireAt))
         {
             return default;
         }
@@ -502,6 +508,30 @@ public class UserService : IUserService
             TokenType = "Bearer",
             Scope = "api"
         };
+        return token;
+    }
+
+    public async Task<Token> CreateTokenByUser(User user)
+    {
+        var accessToken = GenerateJwtToken(user);
+        var jwt = new JwtSecurityTokenHandler().ReadJwtToken(accessToken);
+        var token = new Token
+        {
+            AccessToken = accessToken,
+            ExpireTime = jwt.Payload.Exp.Value,
+            TokenType = "Bearer",
+            Scope = "api"
+        };
+        return token;
+    }
+
+    public async Task<Token> RenewToken()
+    {
+        var newToken = GenerateJwtToken(await GetMyProfile());
+        var newJwt = new JwtSecurityTokenHandler().ReadJwtToken(newToken);
+        Token token = new Token();
+        token.AccessToken = newToken;
+        token.ExpireTime = newJwt.Payload.Exp.Value;
         return token;
     }
 
@@ -557,15 +587,32 @@ public class UserService : IUserService
         return false;
     }
 
-    public async Task<bool> SendVerificationCodeResetPasswordNoLogin(User user)
+    public async Task<bool> SendVerificationCodeNoLogin(User user)
     {
-        var db = _services.GetRequiredService<IBotSharpRepository>();
+        User? record = await ResetVerificationCode(user);
 
-        User? record = null;
-
-        if (!string.IsNullOrEmpty(user.Email) && !string.IsNullOrEmpty(user.Phone))
+        if (record == null)
         {
             return false;
+        }
+
+        //send code to user Email.
+        var hooks = _services.GetServices<IAuthenticationHook>();
+        foreach (var hook in hooks)
+        {
+            await hook.SendVerificationCode(record);
+        }
+
+        return true;
+    }
+
+    public async Task<User> ResetVerificationCode(User user)
+    {
+        var db = _services.GetRequiredService<IBotSharpRepository>();
+        User record = null;
+        if (!string.IsNullOrEmpty(user.Email) && !string.IsNullOrEmpty(user.Phone))
+        {
+            return null;
         }
 
         if (!string.IsNullOrEmpty(user.Phone))
@@ -580,7 +627,7 @@ public class UserService : IUserService
 
         if (record == null)
         {
-            return false;
+            return null;
         }
 
         record.VerificationCode = Nanoid.Generate(alphabet: "0123456789", size: 6);
@@ -588,17 +635,10 @@ public class UserService : IUserService
         //update current verification code.
         db.UpdateUserVerificationCode(record.Id, record.VerificationCode);
 
-        //send code to user Email.
-        var hooks = _services.GetServices<IAuthenticationHook>();
-        foreach (var hook in hooks)
-        {
-            await hook.VerificationCodeResetPassword(record);
-        }
-
-        return true;
+        return record;
     }
 
-    public async Task<bool> SendVerificationCodeResetPasswordLogin()
+    public async Task<bool> SendVerificationCodeLogin()
     {
         var db = _services.GetRequiredService<IBotSharpRepository>();
 
@@ -623,7 +663,7 @@ public class UserService : IUserService
         var hooks = _services.GetServices<IAuthenticationHook>();
         foreach (var hook in hooks)
         {
-            await hook.VerificationCodeResetPassword(record);
+            await hook.SendVerificationCode(record);
         }
 
         return true;
@@ -646,7 +686,7 @@ public class UserService : IUserService
 
         if (!string.IsNullOrEmpty(user.Phone))
         {
-            record = db.GetUserByPhone(user.Phone);
+            record = db.GetUserByPhone(user.Phone, regionCode: (string.IsNullOrWhiteSpace(user.RegionCode) ? "CN" : user.RegionCode));
         }
 
         if (record == null)
@@ -654,7 +694,40 @@ public class UserService : IUserService
             return false;
         }
 
-        if (user.VerificationCode != record.VerificationCode)
+        if (user.VerificationCode != record.VerificationCode || (record.VerificationCodeExpireAt != null && DateTime.UtcNow > record.VerificationCodeExpireAt))
+        {
+            return false;
+        }
+
+        var newPassword = Utilities.HashTextMd5($"{user.Password}{record.Salt}");
+        db.UpdateUserPassword(record.Id, newPassword);
+        return true;
+    }
+
+    public async Task<bool> SetUserPassword(User user)
+    {
+        if (!string.IsNullOrEmpty(user.Id) && !string.IsNullOrEmpty(user.Email) && !string.IsNullOrEmpty(user.Phone))
+        {
+            return false;
+        }
+        var db = _services.GetRequiredService<IBotSharpRepository>();
+
+        User? record = null;
+
+        if (!string.IsNullOrEmpty(user.Id))
+        {
+            record = db.GetUserById(user.Id);
+        }
+        else if (!string.IsNullOrEmpty(user.Phone))
+        {
+            record = db.GetUserByPhone(user.Phone, regionCode: (string.IsNullOrWhiteSpace(user.RegionCode) ? "CN" : user.RegionCode));
+        }
+        else if (!string.IsNullOrEmpty(user.Email))
+        {
+            record = db.GetUserByEmail(user.Email);
+        }
+
+        if (record == null)
         {
             return false;
         }
@@ -695,7 +768,7 @@ public class UserService : IUserService
         var curUser = await GetMyProfile();
         var db = _services.GetRequiredService<IBotSharpRepository>();
         var record = db.GetUserById(curUser.Id);
-        var existPhone = db.GetUserByPhone(phone);
+        var existPhone = db.GetUserByPhone(phone, regionCode: regionCode);
 
         if (record == null || (existPhone != null && existPhone.RegionCode == regionCode))
         {

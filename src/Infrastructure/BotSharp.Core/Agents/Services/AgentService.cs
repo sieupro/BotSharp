@@ -8,20 +8,17 @@ public partial class AgentService : IAgentService
     private readonly IServiceProvider _services;
     private readonly IBotSharpRepository _db;
     private readonly ILogger _logger;
-    private readonly IUserIdentity _user;
     private readonly AgentSettings _agentSettings;
     private readonly JsonSerializerOptions _options;
 
     public AgentService(IServiceProvider services,
         IBotSharpRepository db,
         ILogger<AgentService> logger, 
-        IUserIdentity user, 
         AgentSettings agentSettings)
     {
         _services = services;
         _db = db;
         _logger = logger;
-        _user = user;
         _agentSettings = agentSettings;
         _options = new JsonSerializerOptions
         {
@@ -55,16 +52,5 @@ public partial class AgentService : IAgentService
 
         var userAgents = _db.GetUserAgents(userId);
         return userAgents;
-    }
-
-    public IEnumerable<AgentUtility> GetAgentUtilityOptions()
-    {
-        var utilities = new List<AgentUtility>();
-        var hooks = _services.GetServices<IAgentUtilityHook>();
-        foreach (var hook in hooks)
-        {
-            hook.AddUtilities(utilities);
-        }
-        return utilities.Where(x => !string.IsNullOrWhiteSpace(x.Name)).OrderBy(x => x.Name).ToList();
     }
 }

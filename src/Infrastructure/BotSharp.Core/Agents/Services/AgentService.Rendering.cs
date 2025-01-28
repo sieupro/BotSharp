@@ -11,13 +11,18 @@ public partial class AgentService
         var render = _services.GetRequiredService<ITemplateRender>();
         var conv = _services.GetRequiredService<IConversationService>();
 
+        // merge instructions
+        var instructions = new List<string> { agent.Instruction };
+        var secondaryInstructions = agent.SecondaryInstructions?.Where(x => !string.IsNullOrWhiteSpace(x)).ToList() ?? [];
+        instructions.AddRange(secondaryInstructions);
+
         // update states
         foreach (var t in conv.States.GetStates())
         {
             agent.TemplateDict[t.Key] = t.Value;
         }
 
-        var res = render.Render(agent.Instruction, agent.TemplateDict);
+        var res = render.Render(string.Join("\r\n", instructions), agent.TemplateDict);
         return res;
     }
 
@@ -106,7 +111,7 @@ public partial class AgentService
 
         parameterDef.Properties = JsonSerializer.Deserialize<JsonDocument>(clonedRoot.ToString());
         parameterDef.Required = required;
-        return parameterDef; ;
+        return parameterDef;
     }
 
     public string RenderedTemplate(Agent agent, string templateName)

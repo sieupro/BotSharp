@@ -1,4 +1,3 @@
-using BotSharp.Abstraction.Users.Enums;
 using BotSharp.Abstraction.Users.Settings;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -133,13 +132,13 @@ public class UserController : ControllerBase
     [HttpPost("/user/verifycode-out")]
     public async Task<bool> SendVerificationCodeResetPassword([FromBody] UserCreationModel user)
     {
-        return await _userService.SendVerificationCodeResetPasswordNoLogin(user.ToUser());
+        return await _userService.SendVerificationCodeNoLogin(user.ToUser());
     }
 
     [HttpPost("/user/verifycode-in")]
     public async Task<bool> SendVerificationCodeResetPasswordLogined()
     {
-        return await _userService.SendVerificationCodeResetPasswordLogin();
+        return await _userService.SendVerificationCodeLogin();
     }
 
     [AllowAnonymous]
@@ -244,7 +243,7 @@ public class UserController : ControllerBase
         var file = fileStorage.GetUserAvatar();
         if (string.IsNullOrEmpty(file))
         {
-            return NotFound();
+            return NoContent();
         }
         return BuildFileResult(file);
     }

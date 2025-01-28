@@ -40,6 +40,13 @@ public class AgentUpdateModel
     public List<AgentUtility>? Utilities { get; set; }
 
     /// <summary>
+    /// knowledge bases
+    /// </summary>
+    /// 
+    [JsonPropertyName("knowledge_bases")]
+    public List<AgentKnowledgeBase>? KnowledgeBases { get; set; }
+
+    /// <summary>
     /// Functions
     /// </summary>
     public List<FunctionDef>? Functions { get; set; }
@@ -68,6 +75,9 @@ public class AgentUpdateModel
     [JsonPropertyName("routing_rules")]
     public List<RoutingRuleUpdateModel>? RoutingRules { get; set; }
 
+    [JsonPropertyName("rules")]
+    public List<AgentRule>? Rules { get; set; }
+
     [JsonPropertyName("llm_config")]
     public AgentLlmConfig? LlmConfig { get; set; }
 
@@ -82,14 +92,16 @@ public class AgentUpdateModel
             MergeUtility = MergeUtility,
             MaxMessageCount = MaxMessageCount,
             Type = Type,
-            Profiles = Profiles ?? new List<string>(),
-            RoutingRules = RoutingRules?.Select(x => RoutingRuleUpdateModel.ToDomainElement(x))?.ToList() ?? new List<RoutingRule>(),
+            Profiles = Profiles ?? [],
+            RoutingRules = RoutingRules?.Select(x => RoutingRuleUpdateModel.ToDomainElement(x))?.ToList() ?? [],
             Instruction = Instruction ?? string.Empty,
-            ChannelInstructions = ChannelInstructions ?? new List<ChannelInstruction>(),
-            Templates = Templates ?? new List<AgentTemplate>(),
-            Functions = Functions ?? new List<FunctionDef>(),
-            Responses = Responses ?? new List<AgentResponse>(),
-            Utilities = Utilities ?? new List<AgentUtility>(),
+            ChannelInstructions = ChannelInstructions ?? [],
+            Templates = Templates ?? [],
+            Functions = Functions ?? [],
+            Responses = Responses ?? [],
+            Utilities = Utilities ?? [],
+            KnowledgeBases = KnowledgeBases ?? [],
+            Rules = Rules ?? [],
             LlmConfig = LlmConfig
         };
 
