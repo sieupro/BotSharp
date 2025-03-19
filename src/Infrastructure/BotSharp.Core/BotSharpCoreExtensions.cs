@@ -15,6 +15,7 @@ using BotSharp.Core.Roles.Services;
 using BotSharp.Abstraction.Templating;
 using BotSharp.Core.Templating;
 using BotSharp.Abstraction.Infrastructures.Enums;
+using BotSharp.Abstraction.Realtime;
 
 namespace BotSharp.Core;
 

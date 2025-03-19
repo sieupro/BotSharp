@@ -55,6 +55,11 @@ public class UserService : IUserService
 
         if (record == null && !string.IsNullOrWhiteSpace(user.Phone))
         {
+            //if (user.Type != "internal")
+            //{
+            //    record = db.GetUserByPhoneV2(user.Phone, regionCode: (string.IsNullOrWhiteSpace(user.RegionCode) ? "CN" : user.RegionCode));
+            //}
+
             record = db.GetUserByPhone(user.Phone, regionCode: (string.IsNullOrWhiteSpace(user.RegionCode) ? "CN" : user.RegionCode));
         }
 
@@ -413,23 +418,24 @@ public class UserService : IUserService
         return users;
     }
 
-    public async Task<bool> IsAdminUser(string userId)
+    [SharpCache(10, perInstanceCache: true)]
+    public async Task<(bool, User?)> IsAdminUser(string userId)
     {
         var db = _services.GetRequiredService<IBotSharpRepository>();
         var user = db.GetUserById(userId);
-        return user != null && UserConstant.AdminRoles.Contains(user.Role);
+        var isAdmin = user != null && UserConstant.AdminRoles.Contains(user.Role);
+        return (isAdmin, user);
     }
 
     public async Task<UserAuthorization> GetUserAuthorizations(IEnumerable<string>? agentIds = null)
     {
         var db = _services.GetRequiredService<IBotSharpRepository>();
-        var user = db.GetUserById(_user.Id);
+        var (isAdmin, user) = await IsAdminUser(_user.Id);
         var auth = new UserAuthorization();
 
         if (user == null) return auth;
 
-        auth.IsAdmin = UserConstant.AdminRoles.Contains(user.Role);
-
+        auth.IsAdmin = isAdmin;
         var role = db.GetRoles(new RoleFilter { Names = [user.Role] }).FirstOrDefault();
         var permissions = user.Permissions?.Any() == true ? user.Permissions : role?.Permissions ?? [];
         auth.Permissions = permissions;
@@ -477,10 +483,16 @@ public class UserService : IUserService
         var id = model.UserName;
         var db = _services.GetRequiredService<IBotSharpRepository>();
         var record = id.Contains("@") ? db.GetUserByEmail(id) : db.GetUserByUserName(id);
+
         if (record == null)
         {
             record = db.GetUserByPhone(id, regionCode: (string.IsNullOrWhiteSpace(model.RegionCode) ? "CN" : model.RegionCode));
         }
+
+        //if (record == null)
+        //{
+        //    record = db.GetUserByPhoneV2(id, regionCode: (string.IsNullOrWhiteSpace(model.RegionCode) ? "CN" : model.RegionCode));
+        //}
 
         if (record == null)
         {
@@ -570,6 +582,18 @@ public class UserService : IUserService
         return false;
     }
 
+    public async Task<List<User>> SearchLoginUsers(User filter)
+    {
+        if (filter == null)
+        {
+            return new List<User>();
+        }
+
+        var db = _services.GetRequiredService<IBotSharpRepository>();
+
+        return db.SearchLoginUsers(filter);
+    }
+
     public async Task<bool> VerifyPhoneExisting(string phone, string regionCode)
     {
         if (string.IsNullOrWhiteSpace(phone))
@@ -609,21 +633,12 @@ public class UserService : IUserService
     public async Task<User> ResetVerificationCode(User user)
     {
         var db = _services.GetRequiredService<IBotSharpRepository>();
-        User record = null;
-        if (!string.IsNullOrEmpty(user.Email) && !string.IsNullOrEmpty(user.Phone))
+        if (!string.IsNullOrWhiteSpace(user.Email) && !string.IsNullOrWhiteSpace(user.Phone))
         {
             return null;
         }
 
-        if (!string.IsNullOrEmpty(user.Phone))
-        {
-            record = db.GetUserByPhone(user.Phone, regionCode: user.RegionCode);
-        }
-
-        if (!string.IsNullOrEmpty(user.Email))
-        {
-            record = db.GetUserByEmail(user.Email);
-        }
+        User? record = GetLoginUserByUniqueFilter(user, db);
 
         if (record == null)
         {
@@ -634,6 +649,36 @@ public class UserService : IUserService
 
         //update current verification code.
         db.UpdateUserVerificationCode(record.Id, record.VerificationCode);
+
+        return record;
+    }
+
+    private static User? GetLoginUserByUniqueFilter(User user, IBotSharpRepository db)
+    {
+        User? record = null;
+        if (!string.IsNullOrWhiteSpace(user.Id))
+        {
+            record = db.GetUserById(user.Id);
+        }
+
+        if (record == null && !string.IsNullOrWhiteSpace(user.Phone))
+        {
+            record = db.GetUserByPhone(user.Phone, regionCode: string.IsNullOrWhiteSpace(user.RegionCode) ? "CN" : user.RegionCode);
+            //if (record == null)
+            //{
+            //    record = db.GetUserByPhoneV2(user.Phone, regionCode: string.IsNullOrWhiteSpace(user.RegionCode) ? "CN" : user.RegionCode);
+            //}
+        }
+
+        if (record == null && !string.IsNullOrWhiteSpace(user.Email))
+        {
+            record = db.GetUserByEmail(user.Email);
+        }
+
+        if (record == null && !string.IsNullOrWhiteSpace(user.UserName))
+        {
+            record = db.GetUserByUserName(user.UserName);
+        }
 
         return record;
     }
@@ -677,17 +722,7 @@ public class UserService : IUserService
         }
         var db = _services.GetRequiredService<IBotSharpRepository>();
 
-        User? record = null;
-
-        if (!string.IsNullOrEmpty(user.Email))
-        {
-            record = db.GetUserByEmail(user.Email);
-        }
-
-        if (!string.IsNullOrEmpty(user.Phone))
-        {
-            record = db.GetUserByPhone(user.Phone, regionCode: (string.IsNullOrWhiteSpace(user.RegionCode) ? "CN" : user.RegionCode));
-        }
+        User? record = GetLoginUserByUniqueFilter(user, db);
 
         if (record == null)
         {
@@ -712,20 +747,7 @@ public class UserService : IUserService
         }
         var db = _services.GetRequiredService<IBotSharpRepository>();
 
-        User? record = null;
-
-        if (!string.IsNullOrEmpty(user.Id))
-        {
-            record = db.GetUserById(user.Id);
-        }
-        else if (!string.IsNullOrEmpty(user.Phone))
-        {
-            record = db.GetUserByPhone(user.Phone, regionCode: (string.IsNullOrWhiteSpace(user.RegionCode) ? "CN" : user.RegionCode));
-        }
-        else if (!string.IsNullOrEmpty(user.Email))
-        {
-            record = db.GetUserByEmail(user.Email);
-        }
+        User? record = GetLoginUserByUniqueFilter(user, db);
 
         if (record == null)
         {
@@ -810,40 +832,47 @@ public class UserService : IUserService
         return true;
     }
 
-    public async Task<bool> AddDashboardConversation(string userId, string conversationId)
+    public async Task<bool> AddDashboardConversation(string conversationId)
     {
+        var user = await GetUser(_user.Id);
         var db = _services.GetRequiredService<IBotSharpRepository>();
-        db.AddDashboardConversation(userId, conversationId);
-
+        db.AddDashboardConversation(user?.Id, conversationId);
         await Task.CompletedTask;
         return true;
     }
 
-    public async Task<bool> RemoveDashboardConversation(string userId, string conversationId)
+    public async Task<bool> RemoveDashboardConversation(string conversationId)
     {
+        var user = await GetUser(_user.Id);
         var db = _services.GetRequiredService<IBotSharpRepository>();
-        db.RemoveDashboardConversation(userId, conversationId);
-
+        db.RemoveDashboardConversation(user?.Id, conversationId);
         await Task.CompletedTask;
         return true;
     }
 
-    public async Task UpdateDashboardConversation(string userId, DashboardConversation newDashConv)
+    public async Task UpdateDashboardConversation(DashboardConversation newDashConv)
     {
         var db = _services.GetRequiredService<IBotSharpRepository>();
-        var dashConv = db.GetDashboard(userId)?.ConversationList.FirstOrDefault(x => string.Equals(x.ConversationId, newDashConv.ConversationId));
+        
+        var user = await GetUser(_user.Id);
+        var dashConv = db.GetDashboard(user?.Id)?
+                         .ConversationList
+                         .FirstOrDefault(x => string.Equals(x.ConversationId, newDashConv.ConversationId));
         if (dashConv == null) return;
+
         dashConv.Name = newDashConv.Name ?? dashConv.Name;
         dashConv.Instruction = newDashConv.Instruction ?? dashConv.Instruction;
-        db.UpdateDashboardConversation(userId, dashConv);
+        db.UpdateDashboardConversation(user?.Id, dashConv);
         await Task.CompletedTask;
         return;
     }
 
-    public async Task<Dashboard?> GetDashboard(string userId)
+    public async Task<Dashboard?> GetDashboard()
     {
         var db = _services.GetRequiredService<IBotSharpRepository>();
-        var dash = db.GetDashboard();
+
+        var user = await GetUser(_user.Id);
+        var dash = db.GetDashboard(user?.Id);
         await Task.CompletedTask;
         return dash;
     }

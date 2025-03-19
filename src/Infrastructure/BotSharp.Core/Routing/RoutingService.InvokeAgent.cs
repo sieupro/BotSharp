@@ -53,12 +53,14 @@ public partial class RoutingService
             // Handle output routing exception.
             if (agent.Type == AgentType.Routing)
             {
+                // Forgot about what situation needs to handle in this way
                 response.Content = "Apologies, I'm not quite sure I understand. Could you please provide additional clarification or context?";
             }
 
             message = RoleDialogModel.From(message, role: AgentRole.Assistant, content: response.Content);
             message.CurrentAgentId = agent.Id;
             dialogs.Add(message);
+            Context.SetDialogs(dialogs);
         }
 
         return true;
@@ -86,6 +88,7 @@ public partial class RoutingService
                 dialogs.Add(RoleDialogModel.From(message,
                     role: AgentRole.Assistant,
                     content: responseTemplate));
+                Context.SetDialogs(dialogs);
             }
             else
             {
@@ -95,6 +98,7 @@ public partial class RoutingService
                     content: message.Content);
 
                 dialogs.Add(msg);
+                Context.SetDialogs(dialogs);
 
                 // Send to Next LLM
                 var agentId = routing.Context.GetCurrentAgentId();
@@ -106,6 +110,7 @@ public partial class RoutingService
             dialogs.Add(RoleDialogModel.From(message,
                 role: AgentRole.Assistant,
                 content: message.Content));
+            Context.SetDialogs(dialogs);
         }
 
         return true;

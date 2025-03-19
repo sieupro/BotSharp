@@ -1,7 +1,6 @@
 using Anthropic.SDK.Common;
 using BotSharp.Abstraction.Conversations;
 using BotSharp.Abstraction.MLTasks.Settings;
-using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
@@ -10,10 +9,12 @@ namespace BotSharp.Plugin.AnthropicAI.Providers;
 public class ChatCompletionProvider : IChatCompletion
 {
     public string Provider => "anthropic";
+    public string Model => _model;
 
     protected readonly AnthropicSettings _settings;
     protected readonly IServiceProvider _services;
     protected readonly ILogger _logger;
+    private List<string> renderedInstructions = [];
 
     protected string _model;
 
@@ -48,15 +49,17 @@ public class ChatCompletionProvider : IChatCompletion
 
         if (response.StopReason == "tool_use")
         {
+            var content = response.Content.OfType<TextContent>().FirstOrDefault();
             var toolResult = response.Content.OfType<ToolUseContent>().First();
 
-            responseMessage = new RoleDialogModel(AgentRole.Function, response.FirstMessage?.Text ?? string.Empty)
+            responseMessage = new RoleDialogModel(AgentRole.Function, content?.Text ?? string.Empty)
             {
                 CurrentAgentId = agent.Id,
                 MessageId = conversations.LastOrDefault()?.MessageId ?? string.Empty,
                 ToolCallId = toolResult.Id,
                 FunctionName = toolResult.Name,
-                FunctionArgs = JsonSerializer.Serialize(toolResult.Input)
+                FunctionArgs = JsonSerializer.Serialize(toolResult.Input),
+                RenderedInstruction = string.Join("\r\n", renderedInstructions)
             };
         }
         else
@@ -66,6 +69,7 @@ public class ChatCompletionProvider : IChatCompletion
             {
                 CurrentAgentId = agent.Id,
                 MessageId = conversations.LastOrDefault()?.MessageId ?? string.Empty,
+                RenderedInstruction = string.Join("\r\n", renderedInstructions)
             };
         }
 
@@ -98,12 +102,15 @@ public class ChatCompletionProvider : IChatCompletion
     private (string, MessageParameters) PrepareOptions(Agent agent, List<RoleDialogModel> conversations, LlmModelSetting settings)
     {
         var instruction = "";
+        renderedInstructions = [];
 
         var agentService = _services.GetRequiredService<IAgentService>();
 
-        if (!string.IsNullOrEmpty(agent.Instruction))
+        if (!string.IsNullOrEmpty(agent.Instruction) || !agent.SecondaryInstructions.IsNullOrEmpty())
         {
-            instruction += agentService.RenderedInstruction(agent);
+            var text = agentService.RenderedInstruction(agent);
+            instruction += text;
+            renderedInstructions.Add(text);
         }
 
         /*var routing = _services.GetRequiredService<IRoutingService>();
@@ -161,7 +168,7 @@ public class ChatCompletionProvider : IChatCompletion
                         new ToolResultContent()
                         {
                             ToolUseId = conv.ToolCallId,
-                            //Content = conv.Content,
+                            Content = [new TextContent() { Text = conv.Content }]
                         }
                     }
                 });
@@ -170,12 +177,14 @@ public class ChatCompletionProvider : IChatCompletion
 
         var state = _services.GetRequiredService<IConversationStateService>();
         var temperature = decimal.Parse(state.GetState("temperature", "0.0"));
-        var maxToken = int.Parse(state.GetState("max_tokens", "512"));
+        var maxTokens = int.TryParse(state.GetState("max_tokens"), out var tokens)
+                            ? tokens
+                            : agent.LlmConfig?.MaxOutputTokens ?? LlmConstant.DEFAULT_MAX_OUTPUT_TOKEN;
 
         var parameters = new MessageParameters()
         {
             Messages = messages,
-            MaxTokens = maxToken,
+            MaxTokens = maxTokens,
             Model = settings.Name,
             Stream = false,
             Temperature = temperature,
@@ -197,7 +206,8 @@ public class ChatCompletionProvider : IChatCompletion
             ReferenceHandler = ReferenceHandler.IgnoreCycles,
         };
 
-        foreach (var fn in agent.Functions)
+        var functions = agent.Functions.Concat(agent.SecondaryFunctions ?? []);
+        foreach (var fn in functions)
         {
             /*var inputschema = new InputSchema()
             {

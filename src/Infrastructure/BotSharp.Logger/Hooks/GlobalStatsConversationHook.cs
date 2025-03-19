@@ -4,7 +4,7 @@ using BotSharp.Abstraction.Statistics.Services;
 
 namespace BotSharp.Logger.Hooks;
 
-public class GlobalStatsConversationHook : ConversationHookBase
+public class GlobalStatsConversationHook : IContentGeneratingHook
 {
     private readonly IServiceProvider _services;
 
@@ -14,32 +14,31 @@ public class GlobalStatsConversationHook : ConversationHookBase
         _services = services;
     }
 
-    public override async Task OnMessageReceived(RoleDialogModel message)
+    public async Task AfterGenerated(RoleDialogModel message, TokenStatsModel tokenStats)
     {
         UpdateAgentCall(message);
-    }
-
-    public override async Task OnPostbackMessageReceived(RoleDialogModel message, PostbackMessageModel replyMsg)
-    {
-        UpdateAgentCall(message);
+        await Task.CompletedTask;
     }
 
     private void UpdateAgentCall(RoleDialogModel message)
     {
         // record agent call
-        var globalStats = _services.GetRequiredService<IBotSharpStatService>();
+        var globalStats = _services.GetRequiredService<IBotSharpStatsService>();
 
-        var body = new BotSharpStats
+        var metric = StatsMetric.AgentCall;
+        var dim = "agent";
+        var agentId = message.CurrentAgentId ?? string.Empty;
+        var body = new BotSharpStatsInput
         {
-            Category = StatCategory.AgentCall,
-            Group = $"Agent: {message.CurrentAgentId}",
-            Data = new Dictionary<string, object>
-            {
-                { "agent_id", message.CurrentAgentId },
-                { "agent_call_count", 1 }
-            },
-            RecordTime = DateTime.UtcNow
+            Metric = metric,
+            Dimension = dim,
+            DimRefVal = agentId,
+            RecordTime = DateTime.UtcNow,
+            IntervalType = StatsInterval.Day,
+            Data = [
+                new StatsKeyValuePair("agent_call_count", 1)
+            ]
         };
-        globalStats.UpdateAgentCall(body);
+        globalStats.UpdateStats($"global-{metric}-{dim}-{agentId}", body);
     }
 }

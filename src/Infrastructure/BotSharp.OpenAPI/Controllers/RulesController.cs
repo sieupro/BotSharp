@@ -1,5 +1,5 @@
 using BotSharp.Abstraction.Agents.Models;
-using BotSharp.Core.Rules.Triggers;
+using BotSharp.Abstraction.Rules;
 
 namespace BotSharp.OpenAPI.Controllers;
 

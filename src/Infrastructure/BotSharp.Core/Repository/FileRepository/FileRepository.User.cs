@@ -28,12 +28,29 @@ public partial class FileRepository
         return query.FirstOrDefault();
     }
 
+    public User? GetUserByPhoneV2(string phone, string? source = UserType.Internal, string regionCode = "CN")
+    {
+        var query = Users.Where(x => x.Phone == phone);
+
+        if (!string.IsNullOrEmpty(source))
+        {
+            query = query.Where(x => x.Type == source);
+        }
+
+        if (!string.IsNullOrEmpty(regionCode))
+        {
+            query = query.Where(x => x.RegionCode == regionCode);
+        }
+
+        return query.FirstOrDefault();
+    }
+
     public User? GetAffiliateUserByPhone(string phone)
     {
         return Users.FirstOrDefault(x => x.Phone == phone && x.Type == UserType.Affiliate);
     }
 
-    public User? GetUserById(string id = null)
+    public User? GetUserById(string? id = null)
     {
         return Users.FirstOrDefault(x => x.Id == id || (x.ExternalId != null && x.ExternalId == id));
     }
@@ -48,12 +65,12 @@ public partial class FileRepository
         return Users.Where(x => x.AffiliateId == affiliateId).ToList();
     }
 
-    public User? GetUserByUserName(string userName = null)
+    public User? GetUserByUserName(string? userName = null)
     {
         return Users.FirstOrDefault(x => x.UserName == userName.ToLower());
     }
 
-    public Dashboard? GetDashboard(string id = null)
+    public Dashboard? GetDashboard(string? userId = null)
     {
         return Dashboards.FirstOrDefault();
     }
@@ -80,6 +97,8 @@ public partial class FileRepository
     public void UpdateUserVerified(string userId)
     {
         var user = GetUserById(userId);
+        if (user == null) return;
+
         user.Verified = true;
         var dir = Path.Combine(_dbSettings.FileRepository, USERS_FOLDER, user.Id);
         var path = Path.Combine(dir, USER_FILE);
@@ -126,6 +145,65 @@ public partial class FileRepository
             Items = users.OrderByDescending(x => x.CreatedTime).Skip(filter.Offset).Take(filter.Size),
             Count = users.Count()
         };
+    }
+
+    public List<User> SearchLoginUsers(User filter, string source = UserSource.Internal)
+    {
+        List<User> searchResult = [];
+
+        // search by filters
+        if (!string.IsNullOrWhiteSpace(filter.Id))
+        {
+            var curUser = Users.FirstOrDefault(x => x.Source == source && x.Id == filter.Id.ToLower());
+            User user = curUser != null ? curUser : null;
+            if (user != null)
+            {
+                searchResult.Add(user);
+            }
+        }
+        else if (!string.IsNullOrWhiteSpace(filter.Phone) && !string.IsNullOrWhiteSpace(filter.RegionCode))
+        {
+            string[] regionCodeData = filter.RegionCode.Split('|');
+            if (regionCodeData.Length == 2)
+            {
+                string phoneNoCallingCode = filter.Phone;
+                string phoneWithCallingCode = filter.Phone;
+                if (!filter.Phone.StartsWith('+'))
+                {
+                    phoneNoCallingCode = filter.Phone;
+                    phoneWithCallingCode = $"{regionCodeData[1]}{filter.Phone}";
+                }
+                else
+                {
+                    phoneNoCallingCode = filter.Phone.Replace(regionCodeData[1], "");
+                }
+                searchResult = Users.AsQueryable()
+                                        .Where(x => x.Source == source && (x.Phone == phoneNoCallingCode || x.Phone == phoneWithCallingCode) && x.RegionCode == regionCodeData[0])
+                                        .ToList();
+            }
+        }
+        else if (!string.IsNullOrWhiteSpace(filter.Email))
+        {
+            var curUser = Users.AsQueryable().FirstOrDefault(x => x.Source == source && x.Email == filter.Email.ToString());
+            User? user = curUser != null ? curUser : null;
+            if (user != null)
+            {
+                searchResult.Add(user);
+            }
+        }
+
+
+        if (searchResult.Count == 0 && !string.IsNullOrWhiteSpace(filter.UserName))
+        {
+            var curUser = Users.AsQueryable().FirstOrDefault(x => x.Source == source && x.UserName == filter.UserName);
+            User? user = curUser != null ? curUser : null;
+            if (user != null)
+            {
+                searchResult.Add(user);
+            }
+        }
+
+        return searchResult;
     }
 
     public User? GetUserDetails(string userId, bool includeAgent = false)

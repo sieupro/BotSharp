@@ -149,6 +149,12 @@ public class AgentController : ControllerBase
         return await _agentService.DeleteAgent(agentId);
     }
 
+    [HttpGet("/agent/options")]
+    public async Task<List<IdName>> GetAgentOptions()
+    {
+        return await _agentService.GetAgentOptions();
+    }
+
     [HttpGet("/agent/utility/options")]
     public IEnumerable<AgentUtility> GetAgentUtilityOptions()
     {
@@ -159,5 +165,21 @@ public class AgentController : ControllerBase
             hook.AddUtilities(utilities);
         }
         return utilities.Where(x => !string.IsNullOrWhiteSpace(x.Name)).OrderBy(x => x.Name).ToList();
+    }
+
+    [HttpGet("/agent/labels")]
+    public async Task<IEnumerable<string>> GetAgentLabels()
+    {
+        var agentService = _services.GetRequiredService<IAgentService>();
+        var agents = await agentService.GetAgents(new AgentFilter
+        {
+            Pager = new Pagination { Size = 1000 }
+        });
+
+        var labels = agents.Items?.SelectMany(x => x.Labels)
+                                  .Distinct()
+                                  .OrderBy(x => x)
+                                  .ToList() ?? [];
+        return labels;
     }
 }

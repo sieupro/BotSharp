@@ -183,11 +183,10 @@ public partial class AgentService
                 Name = parsedTask.Name,
                 Description = parsedTask.Description,
                 Enabled = parsedTask.Enabled,
-                DirectAgentId = parsedTask.DirectAgentId,
                 Content = parsedTask.Content,
                 AgentId = agentId,
-                CreatedDateTime = parsedTask.CreatedDateTime,
-                UpdatedDateTime = parsedTask.UpdatedDateTime
+                CreatedTime = parsedTask.CreatedTime,
+                UpdatedTime = parsedTask.UpdatedTime
             };
             tasks.Add(task);
         }

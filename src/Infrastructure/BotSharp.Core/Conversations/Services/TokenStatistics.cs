@@ -42,7 +42,8 @@ public class TokenStatistics : ITokenStatistics
         var settings = settingsService.GetSetting(stats.Provider, _model);
 
         var deltaPromptCost = stats.PromptCount / 1000f * settings.PromptCost;
-        var deltaCompletionCost = stats.CompletionCount / 1000 * settings.CompletionCost;
+        var deltaCompletionCost = stats.CompletionCount / 1000f * settings.CompletionCost;
+        var deltaTotal = deltaPromptCost + deltaCompletionCost;
         _promptCost += deltaPromptCost;
         _completionCost += deltaCompletionCost;
 
@@ -55,25 +56,29 @@ public class TokenStatistics : ITokenStatistics
 
         // Total cost
         var total_cost = float.Parse(stat.GetState("llm_total_cost", "0"));
-        total_cost += Cost;
+        total_cost += deltaTotal;
         stat.SetState("llm_total_cost", total_cost, isNeedVersion: false, source: StateSource.Application);
 
-
-        var globalStats = _services.GetRequiredService<IBotSharpStatService>();
-        var body = new BotSharpStats
+        // Save stats
+        var metric = StatsMetric.AgentLlmCost;
+        var dim = "agent";
+        var agentId = message.CurrentAgentId ?? string.Empty;
+        var globalStats = _services.GetRequiredService<IBotSharpStatsService>();
+        var body = new BotSharpStatsInput
         {
-            Category = StatCategory.LlmCost,
-            Group = $"Agent: {message.CurrentAgentId}",
-            Data = new Dictionary<string, object>
-            {
-                { "prompt_token_count_total", stats.PromptCount },
-                { "completion_token_count_total", stats.CompletionCount },
-                { "prompt_cost_total", deltaPromptCost },
-                { "completion_cost_total", deltaCompletionCost }
-            },
-            RecordTime = DateTime.UtcNow
+            Metric = metric,
+            Dimension = dim,
+            DimRefVal = agentId,
+            RecordTime = DateTime.UtcNow,
+            IntervalType = StatsInterval.Day,
+            Data = [
+                new StatsKeyValuePair("prompt_token_count_total", stats.PromptCount),
+                new StatsKeyValuePair("completion_token_count_total", stats.CompletionCount),
+                new StatsKeyValuePair("prompt_cost_total", deltaPromptCost),
+                new StatsKeyValuePair("completion_cost_total", deltaCompletionCost)
+            ]
         };
-        globalStats.UpdateLlmCost(body);
+        globalStats.UpdateStats($"global-{metric}-{dim}-{agentId}", body);
     }
 
     public void PrintStatistics()
@@ -108,6 +113,10 @@ public class TokenStatistics : ITokenStatistics
 
     public void StopTimer()
     {
+        if (_timer == null)
+        {
+            return;
+        }
         _timer.Stop();
     }
 }

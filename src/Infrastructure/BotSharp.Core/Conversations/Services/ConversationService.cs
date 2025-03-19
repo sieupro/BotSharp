@@ -59,10 +59,10 @@ public partial class ConversationService : IConversationService
         return conversation;
     }
 
-    public async Task<bool> UpdateConversationTags(string conversationId, List<string> tags)
+    public async Task<bool> UpdateConversationTags(string conversationId, List<string> toAddTags, List<string> toDeleteTags)
     {
         var db = _services.GetRequiredService<IBotSharpRepository>();
-        return db.UpdateConversationTags(conversationId, tags);
+        return db.UpdateConversationTags(conversationId, toAddTags, toDeleteTags);
     }
 
     public async Task<bool> UpdateConversationMessage(string conversationId, UpdateMessageRequest request)
@@ -107,7 +107,7 @@ public partial class ConversationService : IConversationService
         record.Id = sess.Id.IfNullOrEmptyAs(Guid.NewGuid().ToString());
         record.UserId = sess.UserId.IfNullOrEmptyAs(foundUserId);
         record.Tags = sess.Tags;
-        record.Title = "New Conversation";
+        record.Title = string.IsNullOrEmpty(record.Title) ? "New Conversation" : record.Title;
 
         db.CreateNewConversation(record);
 
@@ -215,5 +215,33 @@ public partial class ConversationService : IConversationService
 
         var agent = db.GetAgent(routingCtx.EntryAgentId, basicsOnly: true);
         return agent?.MaxMessageCount;
+    }
+
+    public void SaveStates()
+    {
+        _state.Save();
+    }
+
+    public async Task<List<string>> GetConversationStateSearhKeys(ConversationStateKeysFilter filter)
+    {
+        if (filter == null)
+        {
+            filter = ConversationStateKeysFilter.Empty();
+        }
+
+        var keys = new List<string>();
+        if (!filter.PreLoad && string.IsNullOrWhiteSpace(filter.Query))
+        {
+            return keys;
+        }
+
+        var userService = _services.GetRequiredService<IUserService>();
+        var db = _services.GetRequiredService<IBotSharpRepository>();
+
+        var (isAdmin, user) = await userService.IsAdminUser(_user.Id);
+        filter.UserIds = !isAdmin && user?.Id != null ? [user.Id] : [];
+        keys = db.GetConversationStateSearchKeys(filter);
+        keys = filter.PreLoad ? keys : keys.Where(x => x.Contains(filter.Query ?? string.Empty, StringComparison.OrdinalIgnoreCase)).ToList();
+        return keys.OrderBy(x => x).Take(filter.KeyLimit).ToList();
     }
 }

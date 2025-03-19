@@ -8,8 +8,9 @@ public interface IUserService
 {
     Task<User> GetUser(string id);
     Task<PagedItems<User>> GetUsers(UserFilter filter);
+    Task<List<User>> SearchLoginUsers(User filter);
     Task<User?> GetUserDetails(string userId, bool includeAgent = false);
-    Task<bool> IsAdminUser(string userId);
+    Task<(bool, User?)> IsAdminUser(string userId);
     Task<UserAuthorization> GetUserAuthorizations(IEnumerable<string>? agentIds = null);
     Task<bool> UpdateUser(User user, bool isUpdateUserAgents = false);
     Task<User> CreateUser(User user);
@@ -33,8 +34,8 @@ public interface IUserService
     Task<bool> UpdatePassword(string newPassword, string verificationCode);
     Task<DateTime> GetUserTokenExpires();
     Task<bool> UpdateUsersIsDisable(List<string> userIds, bool isDisable);
-    Task<bool> AddDashboardConversation(string userId, string conversationId);
-    Task<bool> RemoveDashboardConversation(string userId, string conversationId);
-    Task UpdateDashboardConversation(string userId, DashboardConversation dashConv);
-    Task<Dashboard?> GetDashboard(string userId);
+    Task<bool> AddDashboardConversation(string conversationId);
+    Task<bool> RemoveDashboardConversation(string conversationId);
+    Task UpdateDashboardConversation(DashboardConversation dashConv);
+    Task<Dashboard?> GetDashboard();
 }
