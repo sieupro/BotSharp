@@ -29,13 +29,14 @@ public class UtilWebGoToPageFn : IFunctionCallback
         args.WaitTime = _webDriver.DefaultWaitTime;
 
         var conv = _services.GetRequiredService<IConversationService>();
-
-        var browser = _services.GetRequiredService<IWebBrowser>();
+        var webDriverService = _services.GetRequiredService<WebDriverService>();
+        var services = _services.CreateScope().ServiceProvider;
+        var browser = services.GetRequiredService<IWebBrowser>();
         var msg = new MessageInfo
         {
             AgentId = message.CurrentAgentId,
             MessageId = message.MessageId,
-            ContextId = message.CurrentAgentId,
+            ContextId = webDriverService.GetMessageContext(message)
         };
         if (!args.KeepBrowserOpen)
         {
@@ -50,7 +51,6 @@ public class UtilWebGoToPageFn : IFunctionCallback
 
         message.Content = $"Open web page successfully.";
 
-        var webDriverService = _services.GetRequiredService<WebDriverService>();
         var path = webDriverService.GetScreenshotFilePath(message.MessageId);
 
         message.Data = await browser.ScreenshotAsync(msg, path);
