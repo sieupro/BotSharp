@@ -16,7 +16,6 @@
 
   <ItemGroup>
     <PackageReference Include="FaissMask" />
-    <PackageReference Include="Microsoft.AspNetCore.Mvc.Core" />
     <PackageReference Include="FastText.NetWrapper" />
   </ItemGroup>
 </Project>

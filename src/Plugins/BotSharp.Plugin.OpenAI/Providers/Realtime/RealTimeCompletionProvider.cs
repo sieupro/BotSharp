@@ -144,12 +144,28 @@ public class RealTimeCompletionProvider : IRealTimeCompletion
         Action onUserInterrupted)
     {
         var buffer = new byte[1024 * 32];
-        WebSocketReceiveResult result;
+        // Model response timeout
+        var timeout = 30;
+        WebSocketReceiveResult? result = default;
 
         do
         {
-            result = await _webSocket.ReceiveAsync(
-                new ArraySegment<byte>(buffer), CancellationToken.None);
+            Array.Clear(buffer, 0, buffer.Length);
+            
+            var taskWorker = _webSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
+            var taskTimer = Task.Delay(1000 * timeout);
+            var completedTask = await Task.WhenAny(taskWorker, taskTimer);
+
+            if (completedTask == taskWorker)
+            {
+                result = taskWorker.Result;
+            }
+            else
+            {
+                _logger.LogWarning($"Timeout {timeout} seconds waiting for Model response.");
+                await TriggerModelInference("Response user immediately");
+                continue;
+            }
             
             // Convert received data to text/audio (Twilio sends Base64-encoded audio)
             string receivedText = Encoding.UTF8.GetString(buffer, 0, result.Count);
@@ -162,8 +178,12 @@ public class RealTimeCompletionProvider : IRealTimeCompletion
 
             if (response.Type == "error")
             {
+                _logger.LogError($"{response.Type}: {receivedText}");
                 var error = JsonSerializer.Deserialize<ServerEventErrorResponse>(receivedText);
-                _logger.LogError($"Error: {error.Body.Message}");
+                if (error?.Body.Type == "server_error")
+                {
+                    break;
+                }
             }
             else if (response.Type == "session.created")
             {
@@ -182,7 +202,6 @@ public class RealTimeCompletionProvider : IRealTimeCompletion
             {
                 _logger.LogInformation($"{response.Type}: {receivedText}");
                 var data = JsonSerializer.Deserialize<ResponseAudioTranscript>(receivedText);
-                await Task.Delay(1000);
                 onModelAudioTranscriptDone(data.Transcript);
             }
             else if (response.Type == "response.audio.delta")
@@ -296,7 +315,7 @@ public class RealTimeCompletionProvider : IRealTimeCompletion
         var settings = settingsService.GetSetting(Provider, args.Model ?? _model);
 
         var api = _services.GetRequiredService<IOpenAiRealtimeApi>();
-        var session = await api.GetSessionAsync(args, settings.ApiKey);
+        var session = await api.CreateSessionAsync(args, settings.ApiKey);
         return session;
     }
 
@@ -336,12 +355,12 @@ public class RealTimeCompletionProvider : IRealTimeCompletion
             {
                 InputAudioFormat = "g711_ulaw",
                 OutputAudioFormat = "g711_ulaw",
-                InputAudioTranscription = new InputAudioTranscription
+                /*InputAudioTranscription = new InputAudioTranscription
                 {
                     Model = realtimeModelSettings.InputAudioTranscription.Model,
                     Language = realtimeModelSettings.InputAudioTranscription.Language,
                     Prompt = string.Join(", ", words.Select(x => x.ToLower().Trim()).Distinct()).SubstringMax(1024)
-                },
+                },*/
                 Voice = realtimeModelSettings.Voice,
                 Instructions = instruction,
                 ToolChoice = "auto",
@@ -676,6 +695,7 @@ public class RealTimeCompletionProvider : IRealTimeCompletion
             {
                 Provider = Provider,
                 Model = _model,
+                Prompt = "[hook.AfterGenerated] [UNCHANGED PROMPT]",
                 CompletionCount = data.Usage.OutputTokens,
                 PromptCount = data.Usage.InputTokens
             });
@@ -695,7 +715,7 @@ public class RealTimeCompletionProvider : IRealTimeCompletion
 
     public async Task<RoleDialogModel> OnConversationItemCreated(RealtimeHubConnection conn, string response)
     {
-        var item = JsonSerializer.Deserialize<ConversationItemCreated>(response).Item;
+        var item = response.JsonContent<ConversationItemCreated>().Item;
         var message = new RoleDialogModel(item.Role, item.Content.FirstOrDefault()?.Transcript);
 
         return message;
