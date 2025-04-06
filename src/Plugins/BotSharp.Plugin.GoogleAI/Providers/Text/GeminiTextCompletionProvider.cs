@@ -3,7 +3,6 @@ using BotSharp.Abstraction.Conversations;
 using BotSharp.Abstraction.Loggers;
 using GenerativeAI;
 using GenerativeAI.Core;
-using Microsoft.Extensions.Logging;
 
 namespace BotSharp.Plugin.GoogleAi.Providers.Text;
 
@@ -17,11 +16,14 @@ public class GeminiTextCompletionProvider : ITextCompletion
     public string Provider => "google-ai";
     public string Model => _model;
 
+    private GoogleAiSettings _settings;
     public GeminiTextCompletionProvider(
         IServiceProvider services,
+        GoogleAiSettings googleSettings,
         ILogger<GeminiTextCompletionProvider> logger,
         ITokenStatistics tokenStatistics)
     {
+        _settings = googleSettings;
         _services = services;
         _logger = logger;
         _tokenStatistics = tokenStatistics;

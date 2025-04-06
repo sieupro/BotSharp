@@ -6,7 +6,6 @@ using BotSharp.Abstraction.Loggers;
 using GenerativeAI;
 using GenerativeAI.Core;
 using GenerativeAI.Types;
-using Microsoft.Extensions.Logging;
 
 namespace BotSharp.Plugin.GoogleAi.Providers.Chat;
 
@@ -21,10 +20,13 @@ public class GeminiChatCompletionProvider : IChatCompletion
     public string Provider => "google-ai";
     public string Model => _model;
 
+    private GoogleAiSettings _settings;
     public GeminiChatCompletionProvider(
         IServiceProvider services,
+        GoogleAiSettings googleSettings,
         ILogger<GeminiChatCompletionProvider> logger)
     {
+        _settings = googleSettings;
         _services = services;
         _logger = logger;
     }
