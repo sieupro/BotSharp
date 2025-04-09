@@ -37,10 +37,10 @@ public class RealTimeCompletionProvider : IRealTimeCompletion
         Action<List<RoleDialogModel>> onModelResponseDone,
         Action<string> onConversationItemCreated,
         Action<RoleDialogModel> onInputAudioTranscriptionCompleted,
-        Action onUserInterrupted)
+        Action onInterruptionDetected)
     {
-        var llmProviderService = _services.GetRequiredService<ILlmProviderService>();
-        _model = llmProviderService.GetProviderModel(Provider, "gpt-4o", modelType: LlmModelType.Realtime).Name;
+        var realtimeModelSettings = _services.GetRequiredService<RealtimeModelSettings>();
+        _model = realtimeModelSettings.Model;
 
         var settingsService = _services.GetRequiredService<ILlmProviderService>();
         var settings = settingsService.GetSetting(Provider, _model);
@@ -62,7 +62,7 @@ public class RealTimeCompletionProvider : IRealTimeCompletion
                 onModelResponseDone,
                 onConversationItemCreated,
                 onInputAudioTranscriptionCompleted,
-                onUserInterrupted);
+                onInterruptionDetected);
         }
     }
 
@@ -83,6 +83,12 @@ public class RealTimeCompletionProvider : IRealTimeCompletion
         };
 
         await SendEventToModel(audioAppend);
+    }
+
+    public async Task AppenAudioBuffer(ArraySegment<byte> data, int length)
+    {
+        var message = Convert.ToBase64String(data.AsSpan(0, length).ToArray());
+        await AppenAudioBuffer(message);
     }
 
     public async Task TriggerModelInference(string? instructions = null)
@@ -133,11 +139,12 @@ public class RealTimeCompletionProvider : IRealTimeCompletion
         Action<List<RoleDialogModel>> onModelResponseDone,
         Action<string> onConversationItemCreated,
         Action<RoleDialogModel> onUserAudioTranscriptionCompleted,
-        Action onUserInterrupted)
+        Action onInterruptionDetected)
     {
         var buffer = new byte[1024 * 32];
         // Model response timeout
-        var timeout = 30;
+        var settings = _services.GetRequiredService<RealtimeModelSettings>();
+        var timeout = settings.ModelResponseTimeout;
         WebSocketReceiveResult? result = default;
 
         do
@@ -165,8 +172,10 @@ public class RealTimeCompletionProvider : IRealTimeCompletion
             {
                 continue;
             }
-            _logger.LogDebug($"{nameof(RealTimeCompletionProvider)} received: {receivedText}");
+
             var response = JsonSerializer.Deserialize<ServerEventResponse>(receivedText);
+
+            _logger.LogDebug($"{nameof(RealTimeCompletionProvider)} received: {response.Type} {receivedText.Length}");
 
             if (response.Type == "error")
             {
@@ -233,25 +242,7 @@ public class RealTimeCompletionProvider : IRealTimeCompletion
             else if (response.Type == "input_audio_buffer.speech_started")
             {
                 // Handle user interuption
-                if (conn.MarkQueue.Count > 0 && conn.ResponseStartTimestamp != null)
-                {
-                    var elapsedTime = conn.LatestMediaTimestamp - conn.ResponseStartTimestamp;
-
-                    if (!string.IsNullOrEmpty(conn.LastAssistantItemId))
-                    {
-                        var truncateEvent = new
-                        {
-                            type = "conversation.item.truncate",
-                            item_id = conn.LastAssistantItemId,
-                            content_index = 0,
-                            audio_end_ms = elapsedTime
-                        };
-
-                        await SendEventToModel(truncateEvent);
-                    }
-
-                    onUserInterrupted();
-                }
+                onInterruptionDetected();
             }
 
         } while (!result.CloseStatus.HasValue);
@@ -276,7 +267,7 @@ public class RealTimeCompletionProvider : IRealTimeCompletion
         await _webSocket.SendAsync(new ArraySegment<byte>(buffer), WebSocketMessageType.Text, true, CancellationToken.None);
     }
 
-    public async Task<string> UpdateSession(RealtimeHubConnection conn, bool interruptResponse = true)
+    public async Task<string> UpdateSession(RealtimeHubConnection conn)
     {
         var convService = _services.GetRequiredService<IConversationService>();
         var conv = await convService.GetConversation(conn.ConversationId);
@@ -300,9 +291,6 @@ public class RealTimeCompletionProvider : IRealTimeCompletion
             return fn;
         }).ToArray();
 
-        var words = new List<string>();
-        HookEmitter.Emit<IRealtimeHook>(_services, hook => words.AddRange(hook.OnModelTranscriptPrompt(agent)));
-
         var realtimeModelSettings = _services.GetRequiredService<RealtimeModelSettings>();
 
         var sessionUpdate = new
@@ -310,14 +298,8 @@ public class RealTimeCompletionProvider : IRealTimeCompletion
             type = "session.update",
             session = new RealtimeSessionUpdateRequest
             {
-                InputAudioFormat = "g711_ulaw",
-                OutputAudioFormat = "g711_ulaw",
-                /*InputAudioTranscription = new InputAudioTranscription
-                {
-                    Model = realtimeModelSettings.InputAudioTranscription.Model,
-                    Language = realtimeModelSettings.InputAudioTranscription.Language,
-                    Prompt = string.Join(", ", words.Select(x => x.ToLower().Trim()).Distinct()).SubstringMax(1024)
-                },*/
+                InputAudioFormat = realtimeModelSettings.InputAudioFormat,
+                OutputAudioFormat = realtimeModelSettings.OutputAudioFormat,
                 Voice = realtimeModelSettings.Voice,
                 Instructions = instruction,
                 ToolChoice = "auto",
@@ -327,7 +309,7 @@ public class RealTimeCompletionProvider : IRealTimeCompletion
                 MaxResponseOutputTokens = realtimeModelSettings.MaxResponseOutputTokens,
                 TurnDetection = new RealtimeSessionTurnDetection
                 {
-                    InterruptResponse = interruptResponse/*,
+                    InterruptResponse = realtimeModelSettings.InterruptResponse/*,
                     Threshold = realtimeModelSettings.TurnDetection.Threshold,
                     PrefixPadding = realtimeModelSettings.TurnDetection.PrefixPadding,
                     SilenceDuration = realtimeModelSettings.TurnDetection.SilenceDuration*/
@@ -338,6 +320,19 @@ public class RealTimeCompletionProvider : IRealTimeCompletion
                 }
             }
         };
+
+        if (realtimeModelSettings.InputAudioTranscribe)
+        {
+            var words = new List<string>();
+            HookEmitter.Emit<IRealtimeHook>(_services, hook => words.AddRange(hook.OnModelTranscriptPrompt(agent)));
+
+            sessionUpdate.session.InputAudioTranscription = new InputAudioTranscription
+            {
+                Model = realtimeModelSettings.InputAudioTranscription.Model,
+                Language = realtimeModelSettings.InputAudioTranscription.Language,
+                Prompt = string.Join(", ", words.Select(x => x.ToLower().Trim()).Distinct()).SubstringMax(1024)
+            };
+        }
 
         await HookEmitter.Emit<IContentGeneratingHook>(_services, async hook =>
         {

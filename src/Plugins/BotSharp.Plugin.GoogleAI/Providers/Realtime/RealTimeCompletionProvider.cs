@@ -1,4 +1,3 @@
-using BotSharp.Abstraction.MLTasks.Settings;
 using GenerativeAI;
 using GenerativeAI.Core;
 using GenerativeAI.Live;
@@ -65,8 +64,8 @@ public class GoogleRealTimeProvider : IRealTimeCompletion
         this.onInputAudioTranscriptionCompleted = onInputAudioTranscriptionCompleted;
         this.onUserInterrupted = onUserInterrupted;
 
-        var llmProviderService = _services.GetRequiredService<ILlmProviderService>();
-        _model = llmProviderService.GetProviderModel(Provider, "gemini-2.0", modelType: LlmModelType.Realtime).Name;
+        var realtimeModelSettings = _services.GetRequiredService<RealtimeModelSettings>();
+        _model = realtimeModelSettings.Model;
 
         var client = ProviderHelper.GetGeminiClient(Provider, _model, _services);
         _chatClient = client.CreateGenerativeModel(_model);
@@ -92,6 +91,12 @@ public class GoogleRealTimeProvider : IRealTimeCompletion
     public async Task AppenAudioBuffer(string message)
     {
         await _client.SendAudioAsync(Convert.FromBase64String(message));
+    }
+
+    public async Task AppenAudioBuffer(ArraySegment<byte> data, int length)
+    {
+        var buffer = data.AsSpan(0, length).ToArray();
+        await _client.SendAudioAsync(buffer);
     }
 
     public async Task TriggerModelInference(string? instructions = null)
@@ -228,7 +233,7 @@ public class GoogleRealTimeProvider : IRealTimeCompletion
         //todo Send Audio Chunks to Model, Botsharp RealTime Implementation seems to be incomplete
     }
 
-    public async Task<string> UpdateSession(RealtimeHubConnection conn, bool interruptResponse = true)
+    public async Task<string> UpdateSession(RealtimeHubConnection conn)
     {
         var convService = _services.GetRequiredService<IConversationService>();
         var conv = await convService.GetConversation(conn.ConversationId);
