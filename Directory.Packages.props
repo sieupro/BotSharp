@@ -5,6 +5,8 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
   <ItemGroup>
+    <PackageVersion Include="BotSharp.Core.SideCar" Version="5.0.0" />
+    <PackageVersion Include="BotSharp.Plugin.MongoStorage" Version="5.0.0" />
     <PackageVersion Include="EntityFramework" Version="6.4.4" />
     <PackageVersion Include="Google_GenerativeAI" Version="2.5.5" />
     <PackageVersion Include="Google_GenerativeAI.Live" Version="2.5.5" />
@@ -101,8 +103,8 @@
     <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.11.1" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Http" Version="1.11.1" />
     <PackageVersion Include="OpenTelemetry.Instrumentation.Runtime" Version="1.11.1" />
-    <PackageVersion Include="Aspire.Hosting.AppHost" Version="9.1.0" />
-    <PackageVersion Include="Aspire.Hosting.NodeJs" Version="9.1.0" />
+    <PackageVersion Include="Aspire.Hosting.AppHost" Version="9.2.0" />
+    <PackageVersion Include="Aspire.Hosting.NodeJs" Version="9.2.0" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.13.0" />
     <PackageVersion Include="Microsoft.SemanticKernel" Version="1.45.0" />
     <PackageVersion Include="Moq" Version="4.20.72" />
