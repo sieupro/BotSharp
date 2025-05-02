@@ -79,7 +79,7 @@ public class GoogleRealTimeProvider : IRealTimeCompletion
 
         await AttachEvents(_client);
 
-        await _client.ConnectAsync();
+        await _client.ConnectAsync(false);
     }
 
     public async Task Disconnect()
@@ -96,7 +96,7 @@ public class GoogleRealTimeProvider : IRealTimeCompletion
     public async Task AppenAudioBuffer(ArraySegment<byte> data, int length)
     {
         var buffer = data.AsSpan(0, length).ToArray();
-        await _client.SendAudioAsync(buffer);
+        await _client.SendAudioAsync(buffer,"audio/pcm;rate=16000");
     }
 
     public async Task TriggerModelInference(string? instructions = null)
@@ -119,17 +119,18 @@ public class GoogleRealTimeProvider : IRealTimeCompletion
     {
         client.Connected += (sender, e) =>
         {
-            _logger.LogInformation("Google Realtime Client connected");
+            _logger.LogInformation("Google Realtime Client connected.");
             onModelReady();
         };
 
         client.Disconnected += (sender, e) =>
         {
-            _logger.LogInformation("Google Realtime Client disconnected");
+            _logger.LogInformation("Google Realtime Client disconnected.");
         };
 
         client.MessageReceived += async (sender, e) =>
         {
+            _logger.LogInformation("User message received.");
             if (e.Payload.SetupComplete != null)
             {
                 onConversationItemCreated(_client.ConnectionId.ToString());
@@ -156,12 +157,14 @@ public class GoogleRealTimeProvider : IRealTimeCompletion
         };
 
         client.GenerationInterrupted += (sender, e) => 
-        { 
+        {
+            _logger.LogInformation("Audio generation interrupted.");
             onUserInterrupted(); 
         };
 
         client.AudioReceiveCompleted += (sender, e) => 
-        { 
+        {
+            _logger.LogInformation("Audio receive completed.");
             onModelAudioResponseDone(); 
         };
 
@@ -285,10 +288,14 @@ public class GoogleRealTimeProvider : IRealTimeCompletion
             });
         }
 
+        // if(request.Tools.Count == 0)
+        //     request.Tools = null;
+        // config.MaxOutputTokens = null;
+        
         await _client.SendSetupAsync(new BidiGenerateContentSetup()
         {
             GenerationConfig = config,
-            Model = Model,
+            Model = Model.ToModelId(),
             SystemInstruction = request.SystemInstruction,
             Tools = request.Tools?.ToArray(),
         });
