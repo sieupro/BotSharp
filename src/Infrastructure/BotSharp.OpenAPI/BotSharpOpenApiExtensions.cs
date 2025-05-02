@@ -198,11 +198,12 @@ public static class BotSharpOpenApiExtensions
         app.UseCors(policy);
 
         app.UseSwagger();
+        app.UseSwaggerUI();
 
         if (env.IsDevelopment())
         {
             IdentityModelEventSource.ShowPII = true;
-            app.UseSwaggerUI();
+            //app.UseSwaggerUI();
             app.UseDeveloperExceptionPage();
         }
 
