@@ -52,35 +52,29 @@ public class TwilioInboundController : TwilioController
             instruction.SpeechPaths.Add(request.InitAudioFile);
         }
 
-        // Load agent profile
-        var agentService = _services.GetRequiredService<IAgentService>();
-        var agent = await agentService.LoadAgent(request.AgentId);
-
         await HookEmitter.Emit<ITwilioSessionHook>(_services, async hook =>
         {
             await hook.OnSessionCreating(request, instruction);
         });
 
-        request.ConversationId = await InitConversation(request, agent);
+        var (agent, conversationId) = await InitConversation(request);
+        request.ConversationId = conversationId.Id;
         instruction.AgentId = request.AgentId;
         instruction.ConversationId = request.ConversationId;
 
-        if (request.AnsweredBy == "machine_start" &&
-            request.Direction == "outbound-api")
+        if (twilio.MachineDetected(request))
         {
             response = new VoiceResponse();
 
-            await HookEmitter.Emit<ITwilioCallStatusHook>(_services, async hook =>
-            {
-                await hook.OnVoicemailStarting(request);
-            });
+            await HookEmitter.Emit<ITwilioCallStatusHook>(_services, 
+                async hook => await hook.OnVoicemailStarting(request));
 
             var url = twilio.GetSpeechPath(request.ConversationId, "voicemail.mp3");
             response.Play(new Uri(url));
         }
         else
         {
-            if (agent.Profiles.Contains("realtime"))
+            if (agent.Labels.Contains("realtime"))
             {
                 response = twilio.ReturnBidirectionalMediaStreamsInstructions(instruction, agent);
             }
@@ -113,6 +107,12 @@ public class TwilioInboundController : TwilioController
                     response.Redirect(new Uri($"{_settings.CallbackHost}/twilio/voice/reply/{seqNum}?agent-id={request.AgentId}&conversation-id={request.ConversationId}&{twilio.GenerateStatesParameter(request.States)}"), HttpMethod.Post);
                 }
             }
+
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(1500);
+                await twilio.StartRecording(request.CallSid, request.AgentId, request.ConversationId);
+            });
         }
 
         await HookEmitter.Emit<ITwilioSessionHook>(_services, async hook =>
@@ -141,7 +141,7 @@ public class TwilioInboundController : TwilioController
         return result;
     }
 
-    private async Task<string> InitConversation(ConversationalVoiceRequest request, Agent agent)
+    private async Task<(Agent, Conversation)> InitConversation(ConversationalVoiceRequest request)
     {
         var convService = _services.GetRequiredService<IConversationService>();
         var conversation = await convService.GetConversation(request.ConversationId);
@@ -167,20 +167,24 @@ public class TwilioInboundController : TwilioController
             new("twilio_call_sid", request.CallSid),
         };
 
-        // Enable lazy routing mode to optimize realtime experience
-        if (agent.Profiles.Contains("realtime") && agent.Type == AgentType.Routing)
-        {
-            states.Add(new(StateConst.ROUTING_MODE, "lazy"));
-        }
-
         if (request.InitAudioFile != null)
         {
             states.Add(new("init_audio_file", request.InitAudioFile));
         }
 
+        var agentService = _services.GetRequiredService<IAgentService>();
+        // Get agent from storage
+        var agent = await agentService.GetAgent(request.AgentId);
+        if (agent.Type == AgentType.Routing)
+        {
+            states.Add(new(StateConst.ROUTING_MODE, agent.Mode));
+        }
         convService.SetConversationId(conversation.Id, states);
         convService.SaveStates();
+        
+        // reload agent rendering with states
+        agent = await agentService.LoadAgent(request.AgentId);
 
-        return conversation.Id;
+        return (agent, conversation);
     }
 }
