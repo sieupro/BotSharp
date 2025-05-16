@@ -1,4 +1,5 @@
 using BotSharp.Abstraction.Functions;
+using BotSharp.Abstraction.Infrastructures;
 using BotSharp.Abstraction.Instructs;
 using BotSharp.Abstraction.Instructs.Models;
 
@@ -60,14 +61,7 @@ public class ExecuteTemplateFn : IFunctionCallback
                 new(AgentRole.User, text)
             });
 
-            var hooks = _services.GetServices<IInstructHook>();
-            foreach (var hook in hooks)
-            {
-                if (!string.IsNullOrEmpty(hook.SelfId) && hook.SelfId != agent.Id)
-                {
-                    continue;
-                }
-
+            await HookEmitter.Emit<IInstructHook>(_services, async hook =>
                 await hook.OnResponseGenerated(new InstructResponseModel
                 {
                     AgentId = agent.Id,
@@ -76,15 +70,14 @@ public class ExecuteTemplateFn : IFunctionCallback
                     Model = completion.Model,
                     UserMessage = text,
                     CompletionText = response.Content
-                });
-            }
+                }), agent.Id);
 
             return response.Content;
         }
         catch (Exception ex)
         {
             var error = $"Error when getting agent {agent.Name} instruction response.";
-            _logger.LogWarning($"{error} {ex.Message}\r\n{ex.InnerException}");
+            _logger.LogWarning(ex, $"{error} (template name: {templateName})");
             return error;
         }
 

@@ -1,5 +1,5 @@
+using BotSharp.Abstraction.Hooks;
 using BotSharp.Plugin.OpenAI.Models.Realtime;
-using BotSharp.Plugin.OpenAI.Providers.Realtime.Session;
 using OpenAI.Chat;
 
 namespace BotSharp.Plugin.OpenAI.Providers.Realtime;
@@ -12,27 +12,25 @@ public class RealTimeCompletionProvider : IRealTimeCompletion
     public string Provider => "openai";
     public string Model => _model;
 
-    protected readonly OpenAiSettings _settings;
-    protected readonly IServiceProvider _services;
-    protected readonly ILogger<RealTimeCompletionProvider> _logger;
-    private readonly BotSharpOptions _options;
+    private readonly IServiceProvider _services;
+    private readonly ILogger<RealTimeCompletionProvider> _logger;
+    private readonly BotSharpOptions _botsharpOptions;
 
     protected string _model = "gpt-4o-mini-realtime-preview";
-    private RealtimeChatSession _session;
+    private LlmRealtimeSession _session;
 
     public RealTimeCompletionProvider(
-        OpenAiSettings settings,
-        ILogger<RealTimeCompletionProvider> logger,
         IServiceProvider services,
-        BotSharpOptions options)
+        ILogger<RealTimeCompletionProvider> logger,
+        BotSharpOptions botsharpOptions)
     {
-        _settings = settings;
         _logger = logger;
         _services = services;
-        _options = options;
+        _botsharpOptions = botsharpOptions;
     }
 
-    public async Task Connect(RealtimeHubConnection conn,
+    public async Task Connect(
+        RealtimeHubConnection conn,
         Action onModelReady,
         Action<string,string> onModelAudioDeltaReceived,
         Action onModelAudioResponseDone,
@@ -42,14 +40,33 @@ public class RealTimeCompletionProvider : IRealTimeCompletion
         Action<RoleDialogModel> onInputAudioTranscriptionCompleted,
         Action onInterruptionDetected)
     {
+        var settingsService = _services.GetRequiredService<ILlmProviderService>();
         var realtimeModelSettings = _services.GetRequiredService<RealtimeModelSettings>();
+
         _model = realtimeModelSettings.Model;
+        var settings = settingsService.GetSetting(Provider, _model);
 
-        _session?.Dispose();
-        _session = new RealtimeChatSession(_services, _options);
-        await _session.ConnectAsync(Provider, _model, CancellationToken.None);
+        if (_session != null)
+        {
+            _session.Dispose();
+        }
 
-        _ = ReceiveMessage(conn,
+        _session = new LlmRealtimeSession(_services, new ChatSessionOptions
+        {
+            JsonOptions = _botsharpOptions.JsonSerializerOptions
+        });
+
+        await _session.ConnectAsync(
+            uri: new Uri($"wss://api.openai.com/v1/realtime?model={_model}"),
+            headers: new Dictionary<string, string>
+            {
+                {"Authorization", $"Bearer {settings.ApiKey}"},
+                {"OpenAI-Beta", "realtime=v1"}
+            },
+            cancellationToken: CancellationToken.None);
+
+        _ = ReceiveMessage(
+                conn,
                 onModelReady,
                 onModelAudioDeltaReceived,
                 onModelAudioResponseDone,
@@ -62,7 +79,11 @@ public class RealTimeCompletionProvider : IRealTimeCompletion
 
     public async Task Disconnect()
     {
-        _session?.Disconnect();
+        if (_session != null)
+        {
+            await _session.Disconnect();
+            _session.Dispose();
+        }
     }
 
     public async Task AppenAudioBuffer(string message)
@@ -122,7 +143,8 @@ public class RealTimeCompletionProvider : IRealTimeCompletion
         });
     }
 
-    private async Task ReceiveMessage(RealtimeHubConnection conn,
+    private async Task ReceiveMessage(
+        RealtimeHubConnection conn,
         Action onModelReady,
         Action<string, string> onModelAudioDeltaReceived,
         Action onModelAudioResponseDone,
@@ -132,7 +154,7 @@ public class RealTimeCompletionProvider : IRealTimeCompletion
         Action<RoleDialogModel> onUserAudioTranscriptionCompleted,
         Action onInterruptionDetected)
     {
-        await foreach (SessionConversationUpdate update in _session.ReceiveUpdatesAsync(CancellationToken.None))
+        await foreach (ChatSessionUpdate update in _session.ReceiveUpdatesAsync(CancellationToken.None))
         {
             var receivedText = update?.RawResponse;
             if (string.IsNullOrEmpty(receivedText))
@@ -205,11 +227,14 @@ public class RealTimeCompletionProvider : IRealTimeCompletion
             else if (response.Type == "conversation.item.created")
             {
                 _logger.LogInformation($"{response.Type}: {receivedText}");
+
+                var data = JsonSerializer.Deserialize<ConversationItemCreated>(receivedText);
                 onConversationItemCreated(receivedText);
             }
             else if (response.Type == "conversation.item.input_audio_transcription.completed")
             {
                 _logger.LogInformation($"{response.Type}: {receivedText}");
+
                 var message = await OnUserAudioTranscriptionCompleted(conn, receivedText);
                 if (!string.IsNullOrEmpty(message.Content))
                 {
@@ -226,7 +251,13 @@ public class RealTimeCompletionProvider : IRealTimeCompletion
             {
                 _logger.LogInformation($"{response.Type}: {receivedText}");
             }
+            else if (response.Type == "input_audio_buffer.committed")
+            {
+                _logger.LogInformation($"{response.Type}: {receivedText}");
+            }
         }
+
+        _session.Dispose();
     }
 
     public async Task SendEventToModel(object message)
@@ -236,7 +267,7 @@ public class RealTimeCompletionProvider : IRealTimeCompletion
         await _session.SendEventToModel(message);
     }
 
-    public async Task<string> UpdateSession(RealtimeHubConnection conn)
+    public async Task<string> UpdateSession(RealtimeHubConnection conn, bool isInit = false)
     {
         var convService = _services.GetRequiredService<IConversationService>();
         var conv = await convService.GetConversation(conn.ConversationId);
@@ -258,7 +289,6 @@ public class RealTimeCompletionProvider : IRealTimeCompletion
         }).ToArray();
 
         var realtimeModelSettings = _services.GetRequiredService<RealtimeModelSettings>();
-
         var sessionUpdate = new
         {
             type = "session.update",
@@ -290,7 +320,7 @@ public class RealTimeCompletionProvider : IRealTimeCompletion
         if (realtimeModelSettings.InputAudioTranscribe)
         {
             var words = new List<string>();
-            HookEmitter.Emit<IRealtimeHook>(_services, hook => words.AddRange(hook.OnModelTranscriptPrompt(agent)));
+            HookEmitter.Emit<IRealtimeHook>(_services, hook => words.AddRange(hook.OnModelTranscriptPrompt(agent)), agent.Id);
 
             sessionUpdate.session.InputAudioTranscription = new InputAudioTranscription
             {
@@ -302,13 +332,11 @@ public class RealTimeCompletionProvider : IRealTimeCompletion
 
         await HookEmitter.Emit<IContentGeneratingHook>(_services, async hook =>
         {
-            await hook.OnSessionUpdated(agent, instruction, functions);
-        });
+            await hook.OnSessionUpdated(agent, instruction, functions, isInit);
+        }, agent.Id);
 
         await SendEventToModel(sessionUpdate);
-
         await Task.Delay(300);
-
         return instruction;
     }
 
@@ -582,8 +610,9 @@ public class RealTimeCompletionProvider : IRealTimeCompletion
             return [];
         }
 
-        var contentHooks = _services.GetServices<IContentGeneratingHook>().ToList();
+        var contentHooks = _services.GetHooks<IContentGeneratingHook>(conn.CurrentAgentId);
 
+        var prompts = new List<string>();
         var inputTokenDetails = data.Usage?.InputTokenDetails;
         var outputTokenDetails = data.Usage?.OutputTokenDetails;
 
@@ -601,59 +630,43 @@ public class RealTimeCompletionProvider : IRealTimeCompletion
                     MessageType = MessageTypeName.FunctionCall
                 });
 
-                // After chat completion hook
-                foreach (var hook in contentHooks)
-                {
-                    await hook.AfterGenerated(new RoleDialogModel(AgentRole.Assistant, $"{output.Name}\r\n{output.Arguments}")
-                    {
-                        CurrentAgentId = conn.CurrentAgentId
-                    },
-                    new TokenStatsModel
-                    {
-                        Provider = Provider,
-                        Model = _model,
-                        Prompt = $"{output.Name}\r\n{output.Arguments}",
-                        TextInputTokens = inputTokenDetails?.TextTokens ?? 0 - inputTokenDetails?.CachedTokenDetails?.TextTokens ?? 0,
-                        CachedTextInputTokens = data.Usage?.InputTokenDetails?.CachedTokenDetails?.TextTokens ?? 0,
-                        AudioInputTokens = inputTokenDetails?.AudioTokens ?? 0 - inputTokenDetails?.CachedTokenDetails?.AudioTokens ?? 0,
-                        CachedAudioInputTokens = inputTokenDetails?.CachedTokenDetails?.AudioTokens ?? 0,
-                        TextOutputTokens = outputTokenDetails?.TextTokens ?? 0,
-                        AudioOutputTokens = outputTokenDetails?.AudioTokens ?? 0
-                    });
-                }
+                prompts.Add($"{output.Name}({output.Arguments})");
             }
             else if (output.Type == "message")
             {
-                var content = output.Content.FirstOrDefault();
+                var content = output.Content.FirstOrDefault()?.Transcript ?? string.Empty;
 
-                outputs.Add(new RoleDialogModel(output.Role, content.Transcript)
+                outputs.Add(new RoleDialogModel(output.Role, content)
                 {
                     CurrentAgentId = conn.CurrentAgentId,
                     MessageId = output.Id,
                     MessageType = MessageTypeName.Plain
                 });
 
-                // After chat completion hook
-                foreach (var hook in contentHooks)
-                {
-                    await hook.AfterGenerated(new RoleDialogModel(AgentRole.Assistant, content.Transcript)
-                    {
-                        CurrentAgentId = conn.CurrentAgentId
-                    },
-                    new TokenStatsModel
-                    {
-                        Provider = Provider,
-                        Model = _model,
-                        Prompt = content.Transcript,
-                        TextInputTokens = inputTokenDetails?.TextTokens ?? 0 - inputTokenDetails?.CachedTokenDetails?.TextTokens ?? 0,
-                        CachedTextInputTokens = data.Usage?.InputTokenDetails?.CachedTokenDetails?.TextTokens ?? 0,
-                        AudioInputTokens = inputTokenDetails?.AudioTokens ?? 0 - inputTokenDetails?.CachedTokenDetails?.AudioTokens ?? 0,
-                        CachedAudioInputTokens = inputTokenDetails?.CachedTokenDetails?.AudioTokens ?? 0,
-                        TextOutputTokens = outputTokenDetails?.TextTokens ?? 0,
-                        AudioOutputTokens = outputTokenDetails?.AudioTokens ?? 0
-                    });
-                }
+                prompts.Add(content);
             }
+        }
+
+        var text = string.Join("\r\n", prompts);
+        // After chat completion hook
+        foreach (var hook in contentHooks)
+        {
+            await hook.AfterGenerated(new RoleDialogModel(AgentRole.Assistant, text)
+            {
+                CurrentAgentId = conn.CurrentAgentId
+            },
+            new TokenStatsModel
+            {
+                Provider = Provider,
+                Model = _model,
+                Prompt = text,
+                TextInputTokens = inputTokenDetails?.TextTokens ?? 0 - inputTokenDetails?.CachedTokenDetails?.TextTokens ?? 0,
+                CachedTextInputTokens = data.Usage?.InputTokenDetails?.CachedTokenDetails?.TextTokens ?? 0,
+                AudioInputTokens = inputTokenDetails?.AudioTokens ?? 0 - inputTokenDetails?.CachedTokenDetails?.AudioTokens ?? 0,
+                CachedAudioInputTokens = inputTokenDetails?.CachedTokenDetails?.AudioTokens ?? 0,
+                TextOutputTokens = outputTokenDetails?.TextTokens ?? 0,
+                AudioOutputTokens = outputTokenDetails?.AudioTokens ?? 0
+            });
         }
 
         return outputs;

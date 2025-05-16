@@ -1,6 +1,7 @@
 using BotSharp.Abstraction.Files.Converters;
 using BotSharp.Abstraction.Instructs.Models;
 using BotSharp.Abstraction.Instructs;
+using BotSharp.Abstraction.Infrastructures;
 
 namespace BotSharp.Core.Files.Services;
 
@@ -42,14 +43,7 @@ public partial class FileInstructService
                 }
             });
 
-            var hooks = _services.GetServices<IInstructHook>();
-            foreach (var hook in hooks)
-            {
-                if (!string.IsNullOrEmpty(hook.SelfId) && hook.SelfId != innerAgentId)
-                {
-                    continue;
-                }
-
+            await HookEmitter.Emit<IInstructHook>(_services, async hook =>
                 await hook.OnResponseGenerated(new InstructResponseModel
                 {
                     AgentId = innerAgentId,
@@ -59,14 +53,13 @@ public partial class FileInstructService
                     UserMessage = text,
                     SystemInstruction = instruction,
                     CompletionText = message.Content
-                });
-            }
+                }), innerAgentId);
 
             return message.Content;
         }
         catch (Exception ex)
         {
-            _logger.LogError($"Error when analyzing pdf in file service: {ex.Message}\r\n{ex.InnerException}");
+            _logger.LogError(ex, $"Error when analyzing pdf in file service.");
             return content;
         }
         finally
@@ -113,7 +106,7 @@ public partial class FileInstructService
             }
             catch (Exception ex)
             {
-                _logger.LogWarning($"Error when saving pdf file: {ex.Message}\r\n{ex.InnerException}");
+                _logger.LogWarning(ex, $"Error when saving pdf file.");
                 continue;
             }
         }
@@ -141,7 +134,7 @@ public partial class FileInstructService
             }
             catch (Exception ex)
             {
-                _logger.LogWarning($"Error when converting pdf file to images ({file}): {ex.Message}\r\n{ex.InnerException}");
+                _logger.LogWarning(ex, $"Error when converting pdf file to images ({file}).");
                 continue;
             }
         }

@@ -1,4 +1,5 @@
 using BotSharp.Abstraction.Agents.Models;
+using BotSharp.Abstraction.Infrastructures;
 using BotSharp.Abstraction.Infrastructures.Enums;
 using BotSharp.Core.Infrastructures;
 using BotSharp.Plugin.Twilio.Interfaces;
@@ -55,7 +56,7 @@ public class TwilioInboundController : TwilioController
         await HookEmitter.Emit<ITwilioSessionHook>(_services, async hook =>
         {
             await hook.OnSessionCreating(request, instruction);
-        });
+        }, request.AgentId);
 
         var (agent, conversationId) = await InitConversation(request);
         request.ConversationId = conversationId.Id;
@@ -65,9 +66,9 @@ public class TwilioInboundController : TwilioController
         if (twilio.MachineDetected(request))
         {
             response = new VoiceResponse();
-
+            
             await HookEmitter.Emit<ITwilioCallStatusHook>(_services, 
-                async hook => await hook.OnVoicemailStarting(request));
+                async hook => await hook.OnVoicemailStarting(request), request.AgentId);
 
             var url = twilio.GetSpeechPath(request.ConversationId, "voicemail.mp3");
             response.Play(new Uri(url));
@@ -118,7 +119,7 @@ public class TwilioInboundController : TwilioController
         await HookEmitter.Emit<ITwilioSessionHook>(_services, async hook =>
         {
             await hook.OnSessionCreated(request);
-        });
+        }, request.AgentId);
 
         return TwiML(response);
     }
@@ -152,7 +153,7 @@ public class TwilioInboundController : TwilioController
                 AgentId = request.AgentId,
                 Channel = ConversationChannel.Phone,
                 ChannelId = request.CallSid,
-                Title = $"Incoming phone call from {request.From}",
+                Title = request.Intent ?? $"Incoming phone call from {request.From}",
                 Tags = [],
             };
 
@@ -167,6 +168,21 @@ public class TwilioInboundController : TwilioController
             new("twilio_call_sid", request.CallSid),
         };
 
+        if (request.Direction == "inbound")
+        {
+            states.Add(new MessageState("calling_phone_from", request.From));
+            states.Add(new MessageState("calling_phone_to", request.To));
+        }
+
+        var requestStates = ParseStates(request.States);
+        foreach (var s in requestStates)
+        {
+            if (!states.Any(x => x.Key == s.Key))
+            {
+                states.Add(new MessageState(s.Key, s.Value));
+            }
+        }
+
         if (request.InitAudioFile != null)
         {
             states.Add(new("init_audio_file", request.InitAudioFile));
@@ -179,7 +195,20 @@ public class TwilioInboundController : TwilioController
         {
             states.Add(new(StateConst.ROUTING_MODE, agent.Mode));
         }
+
         convService.SetConversationId(conversation.Id, states);
+
+        if (!string.IsNullOrEmpty(request.Intent))
+        {
+            var storage = _services.GetRequiredService<IConversationStorage>();
+
+            storage.Append(conversation.Id, new RoleDialogModel(AgentRole.User, request.Intent)
+            {
+                CurrentAgentId = conversation.Id,
+                CreatedAt = DateTime.UtcNow
+            });
+        }
+
         convService.SaveStates();
         
         // reload agent rendering with states

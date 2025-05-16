@@ -1,3 +1,5 @@
+using BotSharp.Abstraction.Agents.Models;
+using BotSharp.Abstraction.Hooks;
 using OpenAI.Chat;
 
 namespace BotSharp.Plugin.OpenAI.Providers.Chat;
@@ -10,6 +12,11 @@ public class ChatCompletionProvider : IChatCompletion
 
     protected string _model;
     private List<string> renderedInstructions = [];
+
+    private readonly Dictionary<string, float> _defaultTemperature = new()
+    {
+        { "o4-mini", 1.0f }
+    };
 
     public virtual string Provider => "openai";
     public string Model => _model;
@@ -26,7 +33,7 @@ public class ChatCompletionProvider : IChatCompletion
 
     public async Task<RoleDialogModel> GetChatCompletions(Agent agent, List<RoleDialogModel> conversations)
     {
-        var contentHooks = _services.GetServices<IContentGeneratingHook>().ToList();
+        var contentHooks = _services.GetHooks<IContentGeneratingHook>(agent.Id);
 
         // Before chat completion hook
         foreach (var hook in contentHooks)
@@ -99,7 +106,7 @@ public class ChatCompletionProvider : IChatCompletion
         Func<RoleDialogModel, Task> onMessageReceived,
         Func<RoleDialogModel, Task> onFunctionExecuting)
     {
-        var hooks = _services.GetServices<IContentGeneratingHook>().ToList();
+        var hooks = _services.GetHooks<IContentGeneratingHook>(agent.Id);
 
         // Before chat completion hook
         foreach (var hook in hooks)
@@ -220,16 +227,7 @@ public class ChatCompletionProvider : IChatCompletion
         renderedInstructions = [];
 
         var messages = new List<ChatMessage>();
-
-        var temperature = float.Parse(state.GetState("temperature", "0.0"));
-        var maxTokens = int.TryParse(state.GetState("max_tokens"), out var tokens)
-                            ? tokens
-                            : agent.LlmConfig?.MaxOutputTokens ?? LlmConstant.DEFAULT_MAX_OUTPUT_TOKEN;
-        var options = new ChatCompletionOptions()
-        {
-            Temperature = temperature,
-            MaxOutputTokenCount = maxTokens
-        };
+        var options = InitChatCompletionOption(agent);
 
         var functions = agent.Functions.Concat(agent.SecondaryFunctions ?? []);
         foreach (var function in functions)
@@ -389,6 +387,27 @@ public class ChatCompletionProvider : IChatCompletion
         }
 
         return prompt;
+    }
+
+    private ChatCompletionOptions InitChatCompletionOption(Agent agent)
+    {
+        var state = _services.GetRequiredService<IConversationStateService>();
+
+        var temperature = float.Parse(state.GetState("temperature", "0.0"));
+        if (_defaultTemperature.ContainsKey(_model))
+        {
+            temperature = _defaultTemperature[_model];
+        }
+
+        var maxTokens = int.TryParse(state.GetState("max_tokens"), out var tokens)
+                        ? tokens
+                        : agent.LlmConfig?.MaxOutputTokens ?? LlmConstant.DEFAULT_MAX_OUTPUT_TOKEN;
+
+        return new ChatCompletionOptions()
+        {
+            Temperature = temperature,
+            MaxOutputTokenCount = maxTokens
+        };
     }
 
     public void SetModelName(string model)

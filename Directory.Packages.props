@@ -22,6 +22,7 @@
     <PackageVersion Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageVersion Include="SharpHook" Version="5.3.9" />
     <PackageVersion Include="SixLabors.ImageSharp" Version="3.1.8" />
+    <PackageVersion Include="System.ClientModel" Version="1.4.1" />
     <PackageVersion Include="System.ComponentModel.Annotations" Version="5.0.0" />
     <PackageVersion Include="System.IdentityModel.Tokens.Jwt" Version="8.9.0" />
     <PackageVersion Include="System.Memory.Data" Version="9.0.4" />
