@@ -1,4 +1,3 @@
-using BotSharp.Abstraction.Agents.Models;
 using BotSharp.Abstraction.Hooks;
 using OpenAI.Chat;
 
@@ -219,7 +218,6 @@ public class ChatCompletionProvider : IChatCompletion
     protected (string, IEnumerable<ChatMessage>, ChatCompletionOptions) PrepareOptions(Agent agent, List<RoleDialogModel> conversations)
     {
         var agentService = _services.GetRequiredService<IAgentService>();
-        var state = _services.GetRequiredService<IConversationStateService>();
         var fileStorage = _services.GetRequiredService<IFileStorageService>();
         var settingsService = _services.GetRequiredService<ILlmProviderService>();
         var settings = settingsService.GetSetting(Provider, _model);
@@ -273,10 +271,10 @@ public class ChatCompletionProvider : IChatCompletion
             {
                 messages.Add(new AssistantChatMessage(new List<ChatToolCall>
                 {
-                    ChatToolCall.CreateFunctionToolCall(message.FunctionName, message.FunctionName, BinaryData.FromString(message.FunctionArgs ?? string.Empty))
+                    ChatToolCall.CreateFunctionToolCall(message.ToolCallId.IfNullOrEmptyAs(message.FunctionName), message.FunctionName, BinaryData.FromString(message.FunctionArgs ?? "{}"))
                 }));
 
-                messages.Add(new ToolChatMessage(message.FunctionName, message.Content));
+                messages.Add(new ToolChatMessage(message.ToolCallId ?? message.FunctionName, message.Content));
             }
             else if (message.Role == AgentRole.User)
             {

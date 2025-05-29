@@ -13,6 +13,7 @@ public class LlmRealtimeSession : IDisposable
     private readonly object _singleReceiveLock = new();
     private readonly SemaphoreSlim _clientEventSemaphore = new(initialCount: 1, maxCount: 1);
     private AsyncWebsocketDataCollectionResult _receivedCollectionResult;
+    private bool _disposed = false;
 
     public LlmRealtimeSession(
         IServiceProvider services,
@@ -22,14 +23,18 @@ public class LlmRealtimeSession : IDisposable
         _sessionOptions = sessionOptions;
     }
 
-    public async Task ConnectAsync(Uri uri, Dictionary<string, string> headers, CancellationToken cancellationToken = default)
+    public async Task ConnectAsync(Uri uri, Dictionary<string, string>? headers = null, CancellationToken cancellationToken = default)
     {
+        _disposed = false;
         _webSocket?.Dispose();
         _webSocket = new ClientWebSocket();
 
-        foreach (var header in headers)
+        if (!headers.IsNullOrEmpty())
         {
-            _webSocket.Options.SetRequestHeader(header.Key, header.Value);
+            foreach (var header in headers)
+            {
+                _webSocket.Options.SetRequestHeader(header.Key, header.Value);
+            }
         }
 
         await _webSocket.ConnectAsync(uri, cancellationToken);
@@ -68,17 +73,22 @@ public class LlmRealtimeSession : IDisposable
         };
     }
 
-    public async Task SendEventToModel(object message)
+    public async Task SendEventToModelAsync(object message)
     {
-        if (_webSocket.State != WebSocketState.Open)
-        {
-            return;
-        }
-
-        await _clientEventSemaphore.WaitAsync();
-
         try
         {
+            if (_disposed)
+            {
+                return;
+            }
+
+            await _clientEventSemaphore.WaitAsync();
+
+            if (_webSocket.State != WebSocketState.Open)
+            {
+                return;
+            }
+
             if (message is not string data)
             {
                 data = JsonSerializer.Serialize(message, _sessionOptions?.JsonOptions);
@@ -89,12 +99,17 @@ public class LlmRealtimeSession : IDisposable
         }
         finally
         {
-            _clientEventSemaphore.Release();
+            if (!_disposed)
+            {
+                _clientEventSemaphore.Release();
+            }
         }
     }
 
-    public async Task Disconnect()
+    public async Task DisconnectAsync()
     {
+        if (_disposed) return;
+
         if (_webSocket.State == WebSocketState.Open)
         {
             await _webSocket.CloseAsync(WebSocketCloseStatus.Empty, null, CancellationToken.None);
@@ -103,6 +118,10 @@ public class LlmRealtimeSession : IDisposable
 
     public void Dispose()
     {
+        if (_disposed) return;
+
+        _disposed = true;
+        _clientEventSemaphore?.Dispose();
         _webSocket?.Dispose();
     }
 }

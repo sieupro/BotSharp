@@ -77,8 +77,8 @@ public class RealtimeHub : IRealtimeHub
             {
                 var data = _conn.OnModelAudioResponseDone();
                 await (responseToUser?.Invoke(data) ?? Task.CompletedTask);
-            }, 
-            onAudioTranscriptDone: async transcript =>
+            },
+            onModelAudioTranscriptDone: async transcript =>
             {
 
             },
@@ -105,8 +105,8 @@ public class RealtimeHub : IRealtimeHub
                         dialogs.Add(message);
                         storage.Append(_conn.ConversationId, message);
 
-                        var hooks = _services.GetHooksOrderByPriority<IConversationHook>(_conn.CurrentAgentId);
-                        foreach (var hook in hooks)
+                        var convHooks = _services.GetHooksOrderByPriority<IConversationHook>(_conn.CurrentAgentId);
+                        foreach (var hook in convHooks)
                         {
                             hook.SetAgent(agent)
                                 .SetConversation(conversation);
@@ -115,12 +115,25 @@ public class RealtimeHub : IRealtimeHub
                         }
                     }
                 }
+
+                var isReconnect = false;
+                var realtimeHooks = _services.GetHooks<IRealtimeHook>(_conn.CurrentAgentId);
+                foreach (var hook in realtimeHooks)
+                {
+                    isReconnect = await hook.ShouldReconnect(_conn);
+                    if (isReconnect) break;
+                }
+
+                if (isReconnect)
+                {
+                    await _completer.Reconnect(_conn);
+                }
             },
             onConversationItemCreated: async response =>
             {
                 
             },
-            onInputAudioTranscriptionCompleted: async message =>
+            onInputAudioTranscriptionDone: async message =>
             {
                 // append input audio transcript to conversation
                 dialogs.Add(message);
