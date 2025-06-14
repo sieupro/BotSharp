@@ -1,4 +1,5 @@
 using BotSharp.Abstraction.Infrastructures.Attributes;
+using BotSharp.Abstraction.Roles;
 using BotSharp.Abstraction.Users.Settings;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -105,6 +106,13 @@ public class UserController : ControllerBase
                 Phone = identiy.Phone,
             });
         }
+
+        if (user != null)
+        {
+            var auth = await _userService.GetUserAuthorizations();
+            user.Permissions = auth?.Permissions ?? [];
+        }
+
         return UserViewModel.FromUser(user);
     }
 
@@ -245,8 +253,8 @@ public class UserController : ControllerBase
     private FileContentResult BuildFileResult(string file)
     {
         var fileStorage = _services.GetRequiredService<IFileStorageService>();
-        var bytes = fileStorage.GetFileBytes(file);
-        return File(bytes, "application/octet-stream", Path.GetFileName(file));
+        var binary = fileStorage.GetFileBytes(file);
+        return File(binary.ToArray(), "application/octet-stream", Path.GetFileName(file));
     }
     #endregion
 }
