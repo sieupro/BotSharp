@@ -6,7 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AspNetCoreHostingModel>OutOfProcess</AspNetCoreHostingModel>
     <UserSecretsId>4fb8c9df-7975-4926-ba73-46c8ca440691</UserSecretsId>
-    <IsPackable>true</IsPackable> 
+    <IsPackable>true</IsPackable>
   </PropertyGroup>
 
   <ItemGroup>
@@ -30,7 +30,7 @@
     <ProjectReference Include="..\Plugins\BotSharp.Plugin.AudioHandler\BotSharp.Plugin.AudioHandler.csproj" />
     <ProjectReference Include="..\Plugins\BotSharp.Plugin.TencentCos\BotSharp.Plugin.TencentCos.csproj" />
   </ItemGroup>
-  
+
   <ItemGroup Condition="$(SolutionName)==PizzaBot">
     <PackageReference Include="BotSharp.Logger" />
     <PackageReference Include="BotSharp.OpenAPI" />
@@ -44,15 +44,15 @@
     <PackageReference Include="BotSharp.Plugin.ChatHub" />
   </ItemGroup>
 
-<Target Name="CombinedNugetPackage" BeforeTargets="PrepareForRun" Condition="$(SolutionName)=='PizzaBot'">
+  <Target Name="CombinedNugetPackage" BeforeTargets="PrepareForRun" Condition="$(SolutionName)=='PizzaBot'">
+    <ItemGroup>
+      <CoreContentFiles Include="$(NuGetPackageRoot)botsharp.core\$(BotSharpVersion)\content\data\**\*.*" />
+    </ItemGroup>
+
+    <Copy SourceFiles="@(CoreContentFiles)" DestinationFolder="$(OutputPath)data\%(RecursiveDir)" />
+  </Target>
   <ItemGroup>
-    <CoreContentFiles Include="$(NuGetPackageRoot)botsharp.core\$(BotSharpVersion)\content\data\**\*.*" />
-  </ItemGroup>
-  
-  <Copy SourceFiles="@(CoreContentFiles)" DestinationFolder="$(OutputPath)data\%(RecursiveDir)" />
-</Target>
-  <ItemGroup>
-   
+
     <PackageReference Include="Microsoft.AspNetCore.SignalR.StackExchangeRedis" />
     <PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" />
   </ItemGroup>
@@ -60,9 +60,9 @@
   <ItemGroup>
     <ProjectReference Include="..\..\tests\BotSharp.Plugin.PizzaBot\BotSharp.Plugin.PizzaBot.csproj" />
     <ProjectReference Include="..\BotSharp.ServiceDefaults\BotSharp.ServiceDefaults.csproj" />
-    <ProjectReference Include="..\Infrastructure\BotSharp.Core.MCP\BotSharp.Core.MCP.csproj" />
+    <!--<ProjectReference Include="..\Infrastructure\BotSharp.Core.MCP\BotSharp.Core.MCP.csproj" />-->
   </ItemGroup>
-  
+
   <ItemGroup Condition="$(SolutionName)==BotSharp">
     <ProjectReference Include="..\Infrastructure\BotSharp.Core\BotSharp.Core.csproj" />
     <ProjectReference Include="..\Infrastructure\BotSharp.Core.Rules\BotSharp.Core.Rules.csproj" />
@@ -85,10 +85,10 @@
     <ProjectReference Include="..\Plugins\BotSharp.Plugin.LLamaSharp\BotSharp.Plugin.LLamaSharp.csproj" />
     <ProjectReference Include="..\Plugins\BotSharp.Plugin.SqlDriver\BotSharp.Plugin.SqlDriver.csproj" />
   </ItemGroup>
-  
+
   <ItemGroup>
     <Folder Include="logs\" />
     <Folder Include="Properties\PublishProfiles\" />
   </ItemGroup>
-  
+
 </Project>
