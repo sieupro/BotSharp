@@ -296,3 +296,11 @@ appsettings.Production.json
 env/
 FodyWeavers.*
 /src/WebStarter/appsettings.json
+/src/WebStarter/WebStarter.csproj
+/src/BotSharp.ServiceDefaults/BotSharp.ServiceDefaults.csproj
+/src/BotSharp.AppHost/BotSharp.AppHost.csproj
+/tests/BotSharp.LLM.Tests/BotSharp.LLM.Tests.csproj
+/tests/BotSharp.PizzaBot.MCPServer/BotSharp.PizzaBot.MCPServer.csproj
+/tests/BotSharp.Test.BrowserUse/BotSharp.Test.BrowserUse.csproj
+/tests/BotSharp.Test.ComputerUse/BotSharp.Test.ComputerUse.csproj
+/tests/BotSharp.Test.RealtimeVoice/BotSharp.Test.RealtimeVoice.csproj
