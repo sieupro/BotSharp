@@ -224,7 +224,9 @@ public static class BotSharpOpenApiExtensions
         if (env.IsDevelopment())
         {
             IdentityModelEventSource.ShowPII = true;
+
             app.UseSwaggerUI();
+
             app.UseDeveloperExceptionPage();
         }
 
