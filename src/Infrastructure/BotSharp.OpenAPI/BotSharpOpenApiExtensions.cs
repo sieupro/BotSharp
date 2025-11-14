@@ -8,7 +8,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.IdentityModel.Logging;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.Net.Http.Headers;
-using Microsoft.OpenApi.Models;
+using Microsoft.OpenApi;
 using Microsoft.IdentityModel.JsonWebTokens;
 using BotSharp.OpenAPI.BackgroundServices;
 using System.Text.Json.Serialization;
@@ -164,19 +164,19 @@ public static class BotSharpOpenApiExtensions
                     Name = "Authorization",
                     Type = SecuritySchemeType.ApiKey
                 });
-                c.AddSecurityRequirement(new OpenApiSecurityRequirement {
-                   {
-                     new OpenApiSecurityScheme
-                     {
-                       Reference = new OpenApiReference
-                       {
-                         Type = ReferenceType.SecurityScheme,
-                         Id = "Bearer"
-                       }
-                      },
-                      Array.Empty<string>()
-                   }
-                });
+                //c.AddSecurityRequirement(new OpenApiSecurityRequirement {
+                //   {
+                //     new OpenApiSecurityScheme
+                //     {
+                //       Reference = new OpenApiReference
+                //       {
+                //         Type = ReferenceType.SecurityScheme,
+                //         Id = "Bearer"
+                //       }
+                //      },
+                //      Array.Empty<string>()
+                //   }
+                //});
             }
         );
 
